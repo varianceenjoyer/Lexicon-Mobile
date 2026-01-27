@@ -2,13 +2,6 @@
 /build/
 /dist/
 
-*/prompts
-.tools.md
-.claude
-AGENTS.md
-CLAUDE.md
-human.md
-
 # IDEs and editors
 .codebuddy/
 .c9/
