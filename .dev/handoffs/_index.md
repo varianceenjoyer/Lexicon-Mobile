@@ -1,6 +1,6 @@
 ---
 type: index
-updated: 2026-01-27
+updated: 2026-01-29
 ---
 
 # Handoffs Index
@@ -9,21 +9,66 @@ updated: 2026-01-27
 
 ---
 
-## Active Handoffs (Awaiting Human/Hardware)
+## Active Handoffs
 
-| ID | Work Package | Priority | Status | Created |
-|----|--------------|----------|--------|---------|
+| ID | Work Package | From | To | Priority | Status | Blocked By |
+|----|--------------|------|-----|----------|--------|------------|
+| [HO-2026-01-29-wp-setup](HO-2026-01-29-wp-setup-flutter-init.md) | WP-SETUP | design-lead | developer | critical | ready | — |
+| [HO-2026-01-29-wp-ffi](HO-2026-01-29-wp-ffi-rust-bridge.md) | WP-FFI | design-lead | developer | critical | ready | WP-SETUP |
+| [HO-2026-01-29-wp-audio](HO-2026-01-29-wp-audio-services.md) | WP-AUDIO | design-lead | developer | critical | ready | WP-SETUP |
+| [HO-2026-01-29-wp-state](HO-2026-01-29-wp-state-riverpod.md) | WP-STATE | design-lead | developer | high | ready | WP-SETUP |
+| [HO-2026-01-29-wp-nav](HO-2026-01-29-wp-nav-router.md) | WP-NAV | design-lead | developer | high | ready | WP-SETUP |
+
+---
+
+## Implementation Order
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        IMPLEMENTATION PHASES                            │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  PHASE 1: Foundation (Start Here)                                      │
+│  ─────────────────────────────────                                     │
+│  ► WP-SETUP ← START HERE (no blockers)                                 │
+│                                                                         │
+│  PHASE 2: Core Services (After WP-SETUP, can be parallel)              │
+│  ────────────────────────────────────────────────────────              │
+│    • WP-FFI   — flutter_rust_bridge + Lexicon Core                     │
+│    • WP-AUDIO — audio capture + playback services                      │
+│    • WP-STATE — Riverpod providers and notifiers                       │
+│    • WP-NAV   — GoRouter + bottom navigation                           │
+│                                                                         │
+│  PHASE 3: Views (After Phase 2 complete)                               │
+│  ──────────────────────────────────────                                │
+│    • WP-NOTE  — Note View (transcription + TTS)                        │
+│    • WP-CHAT  — Chat View (diarized conversation)                      │
+│    • WP-FILES — File Manager (browse, search, import)                  │
+│                                                                         │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Dependency Summary
+
+| Work Package | Depends On | Blocks |
+|--------------|------------|--------|
+| WP-SETUP | — | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV |
+| WP-FFI | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
+| WP-AUDIO | WP-SETUP | WP-NOTE, WP-CHAT |
+| WP-STATE | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
+| WP-NAV | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
+| WP-NOTE | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | — |
+| WP-CHAT | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | — |
+| WP-FILES | WP-FFI, WP-STATE, WP-NAV | — |
 
 ---
 
 ## Human-Blocked Work
 
-The following handoffs require human intervention before completion:
-
 | Handoff | Blocker | Action Required |
 |---------|---------|-----------------|
 
-See [.dev/human.md](../human.md) for detailed instructions.
+Currently no human-blocked work.
 
 ---
 
@@ -39,10 +84,29 @@ See [.dev/human.md](../human.md) for detailed instructions.
 1. **Sender** creates handoff document in `handoffs/`
 2. **Sender** updates this index
 3. **Recipient** reviews handoff, acknowledges receipt
-4. **Recipient** begins work, updates work package status
-5. **Recipient** completes work, creates return handoff if needed
+4. **Recipient** begins work, updates work package status to `in-progress`
+5. **Recipient** completes work, updates status to `complete`
 6. **Sender/Recipient** archives completed handoff to `archive/handoffs/`
 
 ---
 
-*Last updated: 2026-01-27
+## Quick Reference
+
+### Starting Implementation
+
+1. Begin with **WP-SETUP** (no blockers)
+2. After WP-SETUP, Phase 2 packages can run in parallel
+3. Phase 3 views require all Phase 2 dependencies
+
+### For Each Work Package
+
+1. Read the handoff document for context
+2. Read the full work package (`.dev/work/WP-*.md`) for details
+3. Update work package status to `in-progress`
+4. Implement per acceptance criteria
+5. Update status to `complete` when done
+6. Create handoff back if issues found
+
+---
+
+*Last updated: 2026-01-29*
