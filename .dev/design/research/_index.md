@@ -5,7 +5,7 @@ updated: 2026-01-29
 
 # Research Index
 
-> Technical research for Lexicon Mobile. **All 8 research plans are complete.**
+> Technical research for Lexicon Mobile. **All 9 research plans are complete.**
 
 ---
 
@@ -43,6 +43,16 @@ These areas required mobile-specific research and have been completed with recom
 
 ---
 
+## Cross-Platform Alternative
+
+| Plan | Focus | Status | Recommendation |
+|------|-------|--------|----------------|
+| [R-FLUTTER-01](R-FLUTTER-01-cross-platform-viability.md) | Flutter viability | ✅ Complete | CONDITIONAL GO — prototype needed |
+
+**Key Finding**: `flutter_rust_bridge` supports all required FFI patterns (StreamSink for streaming, zero-copy arrays). Thermal APIs available via `thermal` package. Audio latency validation requires prototype.
+
+---
+
 ## Key Findings Summary
 
 ### Platform Targets (Confirmed)
@@ -68,6 +78,12 @@ These areas required mobile-specific research and have been completed with recom
 - Binary size: ~25MB (models download on first launch)
 - Privacy: "Data Not Collected" label
 - All licenses commercially compatible
+
+**Flutter Alternative (if chosen):**
+- FFI: `flutter_rust_bridge` with StreamSink for streaming
+- Audio: `record` or `flutter_voice_processor` plugins
+- Thermal: `thermal` package wraps platform APIs
+- Condition: Prototype validation of audio latency required
 
 ---
 

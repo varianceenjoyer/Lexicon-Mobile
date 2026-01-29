@@ -14,6 +14,7 @@
 | [R-PLAT-01](R-PLAT-01-platform-version-constraints.md) | complete | iOS 14+, API 26, Compose 1.5+ |
 | [R-TTS-01](R-TTS-01-tts-pipeline.md) | complete | AVAudioEngine (iOS) / ExoPlayer (Android) |
 | [R-DIST-01](R-DIST-01-build-distribution.md) | complete | ~25MB app, models download on first launch |
+| [R-FLUTTER-01](R-FLUTTER-01-cross-platform-viability.md) | complete | CONDITIONAL GO — flutter_rust_bridge viable |
 
 ---
 
@@ -46,6 +47,15 @@ These research areas were specific to mobile platform integration.
   - **Recommendation:** All clear for submission
   - App binary ~25MB (models download on first launch)
   - Privacy: "Data Not Collected" (on-device processing)
+
+## Cross-Platform Alternative
+
+- **[R-FLUTTER-01](R-FLUTTER-01-cross-platform-viability.md)** — Flutter viability assessment
+  - **Recommendation:** CONDITIONAL GO
+  - `flutter_rust_bridge` supports StreamSink (equivalent to UniFFI callbacks)
+  - Zero-copy array transfer, project mature (5.1k stars, Flutter Favorite)
+  - `thermal` package available for thermal monitoring
+  - **Condition:** Validate audio plugin latency via prototype (<100ms)
 
 ## Summary of Recommendations
 
