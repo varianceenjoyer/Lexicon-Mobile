@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LLS Test"
+rootProject.name = "Lexicon Mobile"
 include(":app")
  
