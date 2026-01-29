@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -47,10 +48,10 @@ class MainActivity : ComponentActivity() {
     // UI State
     private val transcriptionText = mutableStateOf("")
     private val isRecording = mutableStateOf(false)
-    private val audioLevel = mutableStateOf(0f)
+    private val audioLevel = mutableFloatStateOf(0f)
     private val statusMessage = mutableStateOf("Ready")
     private val modelLoaded = mutableStateOf(false)
-    private val charCount = mutableStateOf(0)
+    private val charCount = mutableIntStateOf(0)
 
     // Transcription components
     private var transcriber: Transcriber? = null
@@ -115,10 +116,12 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun toggleRecording() {
         if (isRecording.value) stopRecording() else startRecording()
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startRecording() {
         if (!modelLoaded.value) {
             statusMessage.value = "No model loaded"
@@ -143,7 +146,7 @@ class MainActivity : ComponentActivity() {
                     if (read > 0) {
                         val samples = buffer.take(read).map { it.toFloat() / 32768f }
                         val rms = sqrt(samples.sumOf { (it * it).toDouble() } / samples.size).toFloat()
-                        audioLevel.value = (rms * 8f).coerceIn(0f, 1f)
+                        audioLevel.floatValue = (rms * 8f).coerceIn(0f, 1f)
                         synchronized(audioBuffer) { audioBuffer.addAll(samples) }
                         checkTranscriptionTrigger(rms)
                     }
@@ -160,7 +163,7 @@ class MainActivity : ComponentActivity() {
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null
-        audioLevel.value = 0f
+        audioLevel.floatValue = 0f
         if (audioBuffer.isNotEmpty()) processAudioBuffer()
         statusMessage.value = "Stopped"
     }
@@ -211,7 +214,7 @@ class MainActivity : ComponentActivity() {
                     val text = result?.segments?.joinToString(" ") { it.text.trim() } ?: ""
                     if (text.isNotBlank()) {
                         transcriptionText.value = (transcriptionText.value + " " + text).trim()
-                        charCount.value = transcriptionText.value.length
+                        charCount.intValue = transcriptionText.value.length
                     }
                     statusMessage.value = if (isRecording.value) "Recording..." else "Ready"
                 }
@@ -226,7 +229,9 @@ class MainActivity : ComponentActivity() {
     fun LexiconUI() {
         val scrollState = rememberScrollState()
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Column(Modifier
+                .fillMaxSize()
+                .padding(16.dp)) {
                 Header()
                 Spacer(Modifier.height(8.dp))
                 Toolbar()
@@ -243,7 +248,10 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun Header() {
         Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer).padding(12.dp),
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -258,17 +266,22 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun Toolbar() {
         Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LevelMeter(audioLevel.value, Modifier.width(120.dp))
-            Text("${charCount.value} chars", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            LevelMeter(audioLevel.floatValue, Modifier.width(120.dp))
+            Text("${charCount.intValue} chars", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(12.dp).background(
-                    if (isRecording.value) Color.Red else Color.Gray,
-                    androidx.compose.foundation.shape.CircleShape
-                ))
+                Box(Modifier
+                    .size(12.dp)
+                    .background(
+                        if (isRecording.value) Color.Red else Color.Gray,
+                        androidx.compose.foundation.shape.CircleShape
+                    ))
                 Spacer(Modifier.width(4.dp))
                 Text(if (isRecording.value) "REC" else "STOP", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             }
@@ -277,7 +290,9 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun LevelMeter(level: Float, modifier: Modifier) {
-        Row(modifier.background(Color.Black).padding(2.dp)) {
+        Row(modifier
+            .background(Color.Black)
+            .padding(2.dp)) {
             repeat(20) { i ->
                 val filled = (level * 20).toInt()
                 val color = when {
@@ -286,7 +301,11 @@ class MainActivity : ComponentActivity() {
                     i < 18 -> Color.Yellow
                     else -> Color.Red
                 }
-                Box(Modifier.width(4.dp).height(16.dp).padding(horizontal = 0.5.dp).background(color))
+                Box(Modifier
+                    .width(4.dp)
+                    .height(16.dp)
+                    .padding(horizontal = 0.5.dp)
+                    .background(color))
             }
         }
     }
@@ -294,7 +313,10 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun TranscriptionArea(modifier: Modifier, scrollState: androidx.compose.foundation.ScrollState) {
         Card(modifier.fillMaxWidth()) {
-            Box(Modifier.fillMaxSize().padding(12.dp).verticalScroll(scrollState)) {
+            Box(Modifier
+                .fillMaxSize()
+                .padding(12.dp)
+                .verticalScroll(scrollState)) {
                 Text(
                     transcriptionText.value.ifEmpty { "Tap Record to start transcription..." },
                     fontFamily = FontFamily.Monospace,
@@ -311,14 +333,21 @@ class MainActivity : ComponentActivity() {
     fun ControlButtons() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(
-                onClick = { toggleRecording() },
+                onClick = {
+                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED) {
+                        toggleRecording()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
                 enabled = modelLoaded.value,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isRecording.value) Color.Red else MaterialTheme.colorScheme.primary
                 )
             ) { Text(if (isRecording.value) "Stop" else "Record") }
 
-            OutlinedButton(onClick = { transcriptionText.value = ""; charCount.value = 0 }) { Text("Clear") }
+            OutlinedButton(onClick = { transcriptionText.value = ""; charCount.intValue = 0 }) { Text("Clear") }
         }
     }
 
