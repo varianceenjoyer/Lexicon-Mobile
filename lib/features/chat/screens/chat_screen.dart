@@ -1,169 +1,156 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_constants.dart';
+import '../../note/providers/note_provider.dart';
+import '../../note/widgets/recording_controls.dart';
+import '../providers/chat_provider.dart';
+import '../widgets/chat_app_bar.dart';
+import '../widgets/chat_bubble_list.dart';
 
 /// Chat View screen for multi-speaker diarized transcription.
 ///
 /// Displays conversation as a chat-like interface with speaker bubbles.
-class ChatScreen extends ConsumerWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends ConsumerState<ChatScreen> {
+  late ScrollController _scrollController;
+  Map<int, String> _speakerLabels = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chatState = ref.watch(chatProvider);
+
+    // Auto-scroll when new messages arrive during recording
+    if (chatState.mode == ChatViewMode.recording) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chat'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // TODO: Show overflow menu
-            },
-          ),
-        ],
+      appBar: ChatAppBar(
+        title: chatState.title,
+        onTitleEdit: (title) => ref.read(chatProvider.notifier).updateTitle(title),
+        speakerLabels: _speakerLabels,
+        onSpeakerLabelsEdit: (labels) {
+          setState(() {
+            _speakerLabels = labels;
+          });
+        },
+        onDelete: () {
+          ref.read(chatProvider.notifier).clearSession();
+        },
       ),
-      body: const Column(
+      body: Column(
         children: [
           // Chat messages area
           Expanded(
-            child: _ChatMessageList(),
+            child: ChatBubbleList(
+              messages: chatState.messages,
+              scrollController: _scrollController,
+              speakerLabels: _speakerLabels,
+            ),
           ),
-          // Recording indicator
-          _RecordingStatus(),
+
+          // Recording status indicator
+          if (chatState.mode == ChatViewMode.recording)
+            _RecordingIndicator(),
+
+          // Recording controls
+          RecordingControls(
+            mode: _mapToNoteMode(chatState.mode),
+            onRecordTap: _handleRecordTap,
+            onStopTap: () => ref.read(chatProvider.notifier).stopRecording(),
+          ),
         ],
       ),
-      floatingActionButton: const _RecordButton(),
     );
   }
-}
 
-class _ChatMessageList extends StatelessWidget {
-  const _ChatMessageList();
+  void _handleRecordTap() {
+    final notifier = ref.read(chatProvider.notifier);
+    final mode = ref.read(chatProvider).mode;
 
-  @override
-  Widget build(BuildContext context) {
-    // TODO: Replace with actual messages from provider
-    final messages = <_MockMessage>[
-      _MockMessage(speakerId: 0, text: 'Hello, how are you?'),
-      _MockMessage(speakerId: 1, text: "I'm doing great, thanks!"),
-      _MockMessage(speakerId: 0, text: 'Wonderful to hear.'),
-    ];
-
-    if (messages.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.chat_bubble_outline,
-                size: 64,
-                color: Theme.of(context).colorScheme.outline,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Tap the microphone to start a conversation recording',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    switch (mode) {
+      case ChatViewMode.idle:
+        notifier.startRecording();
+        break;
+      case ChatViewMode.recording:
+        notifier.pauseRecording();
+        break;
+      case ChatViewMode.paused:
+        notifier.resumeRecording();
+        break;
+      default:
+        break;
     }
+  }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: messages.length,
-      itemBuilder: (context, index) {
-        final message = messages[index];
-        return _ChatBubble(
-          text: message.text,
-          speakerId: message.speakerId,
-        );
-      },
-    );
+  /// Maps ChatViewMode to NoteViewMode for reusing RecordingControls.
+  NoteViewMode _mapToNoteMode(ChatViewMode mode) {
+    switch (mode) {
+      case ChatViewMode.idle:
+        return NoteViewMode.idle;
+      case ChatViewMode.recording:
+        return NoteViewMode.recording;
+      case ChatViewMode.paused:
+        return NoteViewMode.paused;
+      case ChatViewMode.error:
+        return NoteViewMode.error;
+    }
   }
 }
 
-class _ChatBubble extends StatelessWidget {
-  final String text;
-  final int speakerId;
-
-  const _ChatBubble({
-    required this.text,
-    required this.speakerId,
-  });
-
+class _RecordingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final isLeft = speakerId % 2 == 0;
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
-    final bubbleColor = isLeft
-        ? Color(AppConstants.speakerLeftColorValue).withOpacity(0.15)
-        : Color(AppConstants.speakerRightColorValue).withOpacity(0.15);
-
-    return Align(
-      alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        margin: EdgeInsets.only(
-          bottom: 8,
-          left: isLeft ? 0 : 48,
-          right: isLeft ? 48 : 0,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isLeft ? 4 : 16),
-            bottomRight: Radius.circular(isLeft ? 16 : 4),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: theme.colorScheme.error,
+            ),
           ),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: colorScheme.onSurface,
+          const SizedBox(width: 8),
+          Text(
+            'Recording...',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
-}
-
-class _RecordingStatus extends StatelessWidget {
-  const _RecordingStatus();
-
-  @override
-  Widget build(BuildContext context) {
-    // TODO: Show actual recording status from provider
-    return const SizedBox.shrink();
-  }
-}
-
-class _RecordButton extends StatelessWidget {
-  const _RecordButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return FloatingActionButton.large(
-      onPressed: () {
-        // TODO: Toggle recording
-      },
-      child: const Icon(Icons.mic),
-    );
-  }
-}
-
-class _MockMessage {
-  final int speakerId;
-  final String text;
-
-  _MockMessage({required this.speakerId, required this.text});
 }

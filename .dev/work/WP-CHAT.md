@@ -1,7 +1,7 @@
 ---
 id: WP-CHAT
 type: work-plan
-status: ready
+status: complete
 phase: mvp
 created: 2026-01-29
 updated: 2026-01-29

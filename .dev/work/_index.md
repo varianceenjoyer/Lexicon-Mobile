@@ -22,9 +22,7 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Priority | Phase | Dependencies | Blocks |
 |----|------|----------|-------|--------------|--------|
-| [WP-NOTE](WP-NOTE.md) | Note View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
-| [WP-CHAT](WP-CHAT.md) | Chat View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
-| [WP-FILES](WP-FILES.md) | File Manager View | high | mvp | WP-SETUP, WP-STATE, WP-NAV | none |
+| (none) | All MVP work packages complete | - | - | - | - |
 
 ### In Progress
 
@@ -39,6 +37,9 @@ Work packages are self-contained units of implementation work with:
 | [WP-STATE](WP-STATE.md) | State Management (Riverpod) | 2026-01-29 | All providers and notifiers |
 | [WP-NAV](WP-NAV.md) | Navigation and App Shell | 2026-01-29 | GoRouter, bottom nav, shell |
 | [WP-AUDIO](WP-AUDIO.md) | Audio Capture and Playback | 2026-01-29 | Service interfaces and stubs |
+| [WP-NOTE](WP-NOTE.md) | Note View Implementation | 2026-01-29 | Full UI with widgets |
+| [WP-CHAT](WP-CHAT.md) | Chat View Implementation | 2026-01-29 | Diarized chat bubbles |
+| [WP-FILES](WP-FILES.md) | File Manager View | 2026-01-29 | List, preview, import workflow |
 
 ---
 
@@ -52,9 +53,9 @@ Work packages are self-contained units of implementation work with:
 | WP-AUDIO | Audio capture and playback services | complete |
 | WP-STATE | Riverpod state management | complete |
 | WP-NAV | Navigation and app shell | complete |
-| WP-NOTE | Note View (single-speaker transcription + TTS) | ready |
-| WP-CHAT | Chat View (multi-speaker diarization) | ready |
-| WP-FILES | File Manager (browse, search, import) | ready |
+| WP-NOTE | Note View (single-speaker transcription + TTS) | complete |
+| WP-CHAT | Chat View (multi-speaker diarization) | complete |
+| WP-FILES | File Manager (browse, search, import) | complete |
 
 ### Beta Phase
 

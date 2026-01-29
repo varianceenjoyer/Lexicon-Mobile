@@ -1,314 +1,299 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/router/navigation_extensions.dart';
+import '../../../services/lexicon_core_service.dart';
+import '../providers/files_provider.dart';
+import '../providers/import_provider.dart';
+import '../widgets/file_list.dart';
+import '../widgets/file_preview.dart';
+import '../widgets/files_app_bar.dart';
+import '../widgets/import_dialog.dart';
+
 /// File Manager View screen for browsing, previewing, and managing transcriptions.
 class FilesScreen extends ConsumerWidget {
   const FilesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final filesState = ref.watch(filesProvider);
+
     return Scaffold(
-      appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              Scaffold.of(context).openDrawer();
-            },
-          ),
-        ),
-        title: const Text('Files'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              // TODO: Open search
-            },
-          ),
-          PopupMenuButton<_SortOption>(
-            icon: const Icon(Icons.sort),
-            onSelected: (option) {
-              // TODO: Change sort order
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: _SortOption.dateDesc,
-                child: Text('Newest first'),
+      appBar: FilesAppBar(
+        onSearch: (query) => ref.read(filesProvider.notifier).search(query),
+        onMenuAction: (action) => _handleMenuAction(context, ref, action),
+        onSortTap: () => _showSortOptions(context, ref),
+      ),
+      body: filesState.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : filesState.errorMessage != null
+              ? _ErrorView(
+                  message: filesState.errorMessage!,
+                  onRetry: () => ref.read(filesProvider.notifier).refresh(),
+                )
+              : _buildContent(context, ref, filesState),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, WidgetRef ref, FilesState state) {
+    // Use search results if searching
+    final sessions =
+        state.searchQuery.isNotEmpty ? _filterBySearch(state) : state.sessions;
+
+    // Responsive layout: side-by-side on tablet, stacked on phone
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTablet = constraints.maxWidth > 600;
+
+        if (isTablet) {
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: FileList(
+                  sessions: sessions,
+                  selectedId: state.selectedSession?.id,
+                  onSelect: (id) =>
+                      ref.read(filesProvider.notifier).selectSession(id),
+                  onDelete: (id) =>
+                      ref.read(filesProvider.notifier).deleteSession(id),
+                  onRename: (id, title) =>
+                      ref.read(filesProvider.notifier).renameSession(id, title),
+                ),
               ),
-              const PopupMenuItem(
-                value: _SortOption.dateAsc,
-                child: Text('Oldest first'),
-              ),
-              const PopupMenuItem(
-                value: _SortOption.nameAsc,
-                child: Text('Name (A-Z)'),
-              ),
-              const PopupMenuItem(
-                value: _SortOption.nameDesc,
-                child: Text('Name (Z-A)'),
+              const VerticalDivider(width: 1),
+              Expanded(
+                flex: 3,
+                child: FilePreview(
+                  session: state.selectedSessionDetail,
+                  onOpen: (id, type) => _openSession(context, ref, id, type),
+                ),
               ),
             ],
-          ),
-        ],
+          );
+        }
+
+        return FileList(
+          sessions: sessions,
+          selectedId: null,
+          onSelect: (id) => _showPreviewSheet(context, ref, id),
+          onDelete: (id) => ref.read(filesProvider.notifier).deleteSession(id),
+          onRename: (id, title) =>
+              ref.read(filesProvider.notifier).renameSession(id, title),
+        );
+      },
+    );
+  }
+
+  List<SessionSummary> _filterBySearch(FilesState state) {
+    final searchIds = state.searchResults.map((r) => r.sessionId).toSet();
+    return state.sessions.where((s) => searchIds.contains(s.id)).toList();
+  }
+
+  void _handleMenuAction(BuildContext context, WidgetRef ref, String action) {
+    switch (action) {
+      case 'import':
+        _showImportDialog(context, ref);
+        break;
+      case 'export':
+        // TODO: Show export options
+        break;
+      case 'settings':
+        context.pushSettings();
+        break;
+      case 'about':
+        _showAboutDialog(context);
+        break;
+    }
+  }
+
+  void _showImportDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const ImportDialog(),
+    );
+    ref.read(importProvider.notifier).selectFile();
+  }
+
+  void _showSortOptions(BuildContext context, WidgetRef ref) {
+    final currentSort = ref.read(filesProvider).sortOrder;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Sort by',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            _SortOption(
+              label: 'Newest first',
+              isSelected: currentSort == SortOrder.dateDesc,
+              onTap: () {
+                ref.read(filesProvider.notifier).setSortOrder(SortOrder.dateDesc);
+                Navigator.pop(context);
+              },
+            ),
+            _SortOption(
+              label: 'Oldest first',
+              isSelected: currentSort == SortOrder.dateAsc,
+              onTap: () {
+                ref.read(filesProvider.notifier).setSortOrder(SortOrder.dateAsc);
+                Navigator.pop(context);
+              },
+            ),
+            _SortOption(
+              label: 'Name (A-Z)',
+              isSelected: currentSort == SortOrder.nameAsc,
+              onTap: () {
+                ref.read(filesProvider.notifier).setSortOrder(SortOrder.nameAsc);
+                Navigator.pop(context);
+              },
+            ),
+            _SortOption(
+              label: 'Name (Z-A)',
+              isSelected: currentSort == SortOrder.nameDesc,
+              onTap: () {
+                ref.read(filesProvider.notifier).setSortOrder(SortOrder.nameDesc);
+                Navigator.pop(context);
+              },
+            ),
+            _SortOption(
+              label: 'Duration (longest)',
+              isSelected: currentSort == SortOrder.durationDesc,
+              onTap: () {
+                ref
+                    .read(filesProvider.notifier)
+                    .setSortOrder(SortOrder.durationDesc);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
       ),
-      drawer: const _FileManagerDrawer(),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Use master-detail layout on larger screens
-          if (constraints.maxWidth > 600) {
-            return const Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: _FileList(),
-                ),
-                VerticalDivider(width: 1),
-                Expanded(
-                  flex: 3,
-                  child: _FilePreview(),
-                ),
-              ],
-            );
-          }
-          // Single column on smaller screens
-          return const _FileList();
+    );
+  }
+
+  void _showPreviewSheet(BuildContext context, WidgetRef ref, SessionId id) {
+    ref.read(filesProvider.notifier).selectSession(id);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Consumer(
+            builder: (context, ref, _) {
+              final state = ref.watch(filesProvider);
+              return FilePreview(
+                session: state.selectedSessionDetail,
+                onOpen: (id, type) {
+                  Navigator.pop(context);
+                  _openSession(context, ref, id, type);
+                },
+              );
+            },
+          );
         },
       ),
     );
   }
-}
 
-class _FileManagerDrawer extends StatelessWidget {
-  const _FileManagerDrawer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  'Lexicon',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text('File Manager'),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.file_upload),
-            title: const Text('Import Audio File'),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Show file picker
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.file_download),
-            title: const Text('Export Selected'),
-            enabled: false, // Enable when file is selected
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Show export dialog
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Navigate to settings
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('About'),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Show about dialog
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FileList extends StatelessWidget {
-  const _FileList();
-
-  @override
-  Widget build(BuildContext context) {
-    // TODO: Replace with actual file list from provider
-    final files = <_MockFile>[
-      _MockFile(
-        id: '1',
-        title: 'Meeting Notes',
-        date: DateTime.now().subtract(const Duration(hours: 2)),
-        duration: const Duration(minutes: 15),
-        type: 'note',
-      ),
-      _MockFile(
-        id: '2',
-        title: 'Interview Recording',
-        date: DateTime.now().subtract(const Duration(days: 1)),
-        duration: const Duration(minutes: 42),
-        type: 'chat',
-      ),
-      _MockFile(
-        id: '3',
-        title: 'Quick Memo',
-        date: DateTime.now().subtract(const Duration(days: 2)),
-        duration: const Duration(minutes: 2),
-        type: 'note',
-      ),
-    ];
-
-    if (files.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.folder_off_outlined,
-                size: 64,
-                color: Theme.of(context).colorScheme.outline,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No transcriptions yet',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Start a recording or import an audio file',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+  void _openSession(
+      BuildContext context, WidgetRef ref, SessionId id, ViewType type) {
+    // TODO: Load session in appropriate view and navigate
+    switch (type) {
+      case ViewType.note:
+        context.goToNote();
+        break;
+      case ViewType.chat:
+        context.goToChat();
+        break;
     }
+  }
 
-    return ListView.builder(
-      itemCount: files.length,
-      itemBuilder: (context, index) {
-        final file = files[index];
-        return _FileListItem(file: file);
-      },
+  void _showAboutDialog(BuildContext context) {
+    showAboutDialog(
+      context: context,
+      applicationName: 'Lexicon',
+      applicationVersion: '0.1.0',
+      applicationLegalese: '2026 Intemporalis',
+      children: [
+        const SizedBox(height: 16),
+        const Text('Cross-platform speech transcription powered by local AI.'),
+      ],
     );
   }
 }
 
-class _FileListItem extends StatelessWidget {
-  final _MockFile file;
+class _SortOption extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
 
-  const _FileListItem({required this.file});
+  const _SortOption({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(
-        file.type == 'note' ? Icons.note_alt : Icons.chat_bubble,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      title: Text(file.title),
-      subtitle: Text(
-        '${_formatDate(file.date)} - ${_formatDuration(file.duration)}',
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () {
-        // TODO: Select file for preview
-      },
-      onLongPress: () {
-        // TODO: Show context menu (rename, delete)
-      },
+      title: Text(label),
+      trailing: isSelected
+          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+          : null,
+      onTap: onTap,
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) {
-      return 'Today';
-    } else if (diff.inDays == 1) {
-      return 'Yesterday';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays} days ago';
-    } else {
-      return '${date.month}/${date.day}/${date.year}';
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
 
-class _FilePreview extends StatelessWidget {
-  const _FilePreview();
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // TODO: Show selected file preview
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.touch_app,
-            size: 48,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Select a file to preview',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.outline,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
-}
-
-enum _SortOption { dateDesc, dateAsc, nameAsc, nameDesc }
-
-class _MockFile {
-  final String id;
-  final String title;
-  final DateTime date;
-  final Duration duration;
-  final String type;
-
-  _MockFile({
-    required this.id,
-    required this.title,
-    required this.date,
-    required this.duration,
-    required this.type,
-  });
 }

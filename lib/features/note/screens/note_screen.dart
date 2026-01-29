@@ -1,127 +1,139 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../providers/service_providers.dart';
+import '../../../services/tts_playback_service.dart';
+import '../providers/note_provider.dart';
+import '../widgets/note_app_bar.dart';
+import '../widgets/recording_controls.dart';
+import '../widgets/transcription_text_area.dart';
+import '../widgets/tts_player_controls.dart';
+
 /// Note View screen for single-speaker transcription with TTS playback.
 ///
 /// This is the primary view for note-taking, memos, and voice journaling.
-class NoteScreen extends ConsumerWidget {
+class NoteScreen extends ConsumerStatefulWidget {
   const NoteScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NoteScreen> createState() => _NoteScreenState();
+}
+
+class _NoteScreenState extends ConsumerState<NoteScreen> {
+  late TextEditingController _textController;
+  late ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final noteState = ref.watch(noteProvider);
+    final ttsService = ref.watch(ttsPlaybackProvider);
+
+    // Sync text controller with state
+    if (_textController.text != noteState.transcriptionText) {
+      final selection = _textController.selection;
+      _textController.text = noteState.transcriptionText;
+      // Preserve cursor position if still valid
+      if (selection.start <= _textController.text.length &&
+          selection.end <= _textController.text.length) {
+        _textController.selection = selection;
+      }
+    }
+
+    // Auto-scroll during recording
+    if (noteState.mode == NoteViewMode.recording) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+
+    final showPlaybackControls = noteState.mode == NoteViewMode.playbackReady ||
+        noteState.mode == NoteViewMode.playing;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Note'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // TODO: Show overflow menu
-            },
-          ),
-        ],
+      appBar: NoteAppBar(
+        title: noteState.title,
+        onTitleEdit: (title) => ref.read(noteProvider.notifier).updateTitle(title),
+        onDelete: () {
+          ref.read(noteProvider.notifier).clearSession();
+        },
       ),
-      body: const Column(
+      body: Column(
         children: [
           // Transcription text area
           Expanded(
-            child: _TranscriptionArea(),
-          ),
-          // TTS playback controls
-          _PlaybackControls(),
-        ],
-      ),
-      floatingActionButton: const _RecordButton(),
-    );
-  }
-}
-
-class _TranscriptionArea extends StatelessWidget {
-  const _TranscriptionArea();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Editable title
-          TextField(
-            decoration: const InputDecoration(
-              hintText: 'Untitled Note',
-              border: InputBorder.none,
-            ),
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 16),
-          // Transcription text
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const SingleChildScrollView(
-                child: Text(
-                  'Tap the microphone to start recording...',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlaybackControls extends StatelessWidget {
-  const _PlaybackControls();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.play_arrow),
-            onPressed: () {
-              // TODO: Start TTS playback
-            },
-          ),
-          Expanded(
-            child: Slider(
-              value: 0,
-              onChanged: (value) {
-                // TODO: Seek playback
+            child: TranscriptionTextArea(
+              controller: _textController,
+              scrollController: _scrollController,
+              isEditable: noteState.mode != NoteViewMode.recording &&
+                  noteState.mode != NoteViewMode.processing,
+              onTextChanged: (text) {
+                ref.read(noteProvider.notifier).updateText(text);
               },
             ),
           ),
-          const Text('0:00 / 0:00'),
+
+          // TTS playback controls
+          if (showPlaybackControls)
+            TTSPlayerControls(
+              position: ttsService.position,
+              duration: ttsService.duration,
+              playbackState: ttsService.playbackState,
+              onPlay: () => ref.read(noteProvider.notifier).startPlayback(),
+              onPause: () => ref.read(noteProvider.notifier).pausePlayback(),
+              onSeek: (pos) => ref.read(noteProvider.notifier).seekPlayback(pos),
+            ),
+
+          // Recording controls
+          RecordingControls(
+            mode: noteState.mode,
+            onRecordTap: _handleRecordTap,
+            onStopTap: () => ref.read(noteProvider.notifier).stopRecording(),
+          ),
         ],
       ),
     );
   }
-}
 
-class _RecordButton extends StatelessWidget {
-  const _RecordButton();
+  void _handleRecordTap() {
+    final notifier = ref.read(noteProvider.notifier);
+    final mode = ref.read(noteProvider).mode;
 
-  @override
-  Widget build(BuildContext context) {
-    return FloatingActionButton.large(
-      onPressed: () {
-        // TODO: Toggle recording
-      },
-      child: const Icon(Icons.mic),
-    );
+    switch (mode) {
+      case NoteViewMode.idle:
+      case NoteViewMode.playbackReady:
+        notifier.startRecording();
+        break;
+      case NoteViewMode.recording:
+        notifier.pauseRecording();
+        break;
+      case NoteViewMode.paused:
+        notifier.resumeRecording();
+        break;
+      case NoteViewMode.playing:
+        notifier.pausePlayback();
+        break;
+      default:
+        break;
+    }
   }
 }
