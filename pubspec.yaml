@@ -1,0 +1,54 @@
+name: lexicon_mobile
+description: Cross-platform speech transcription client for Lexicon Local Server
+version: 0.1.0+1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+
+  # Navigation
+  go_router: ^13.0.0
+
+  # Audio
+  record: ^5.0.0
+  just_audio: ^0.9.36
+
+  # Permissions
+  permission_handler: ^11.0.0
+
+  # Background Tasks
+  flutter_foreground_task: ^6.0.0
+
+  # Thermal Monitoring
+  thermal: ^0.1.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+
+  # Utilities
+  equatable: ^2.0.5
+  freezed_annotation: ^2.4.0
+  json_annotation: ^4.8.0
+  uuid: ^4.2.0
+  path_provider: ^2.1.0
+  path: ^1.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.0
+  freezed: ^2.4.0
+  json_serializable: ^6.7.0
+  riverpod_generator: ^2.3.0
+
+flutter:
+  uses-material-design: true

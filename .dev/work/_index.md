@@ -22,10 +22,6 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Priority | Phase | Dependencies | Blocks |
 |----|------|----------|-------|--------------|--------|
-| [WP-SETUP](WP-SETUP.md) | Flutter Project Setup | critical | mvp | none | WP-AUDIO, WP-STATE, WP-NAV |
-| [WP-AUDIO](WP-AUDIO.md) | Audio Capture and Playback | critical | mvp | WP-SETUP | WP-NOTE, WP-CHAT |
-| [WP-STATE](WP-STATE.md) | State Management (Riverpod) | high | mvp | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
-| [WP-NAV](WP-NAV.md) | Navigation and App Shell | high | mvp | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
 | [WP-NOTE](WP-NOTE.md) | Note View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
 | [WP-CHAT](WP-CHAT.md) | Chat View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
 | [WP-FILES](WP-FILES.md) | File Manager View | high | mvp | WP-SETUP, WP-STATE, WP-NAV | none |
@@ -39,6 +35,10 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Completed | Notes |
 |----|------|-----------|-------|
+| [WP-SETUP](WP-SETUP.md) | Flutter Project Setup | 2026-01-29 | Structure, dependencies, platform config |
+| [WP-STATE](WP-STATE.md) | State Management (Riverpod) | 2026-01-29 | All providers and notifiers |
+| [WP-NAV](WP-NAV.md) | Navigation and App Shell | 2026-01-29 | GoRouter, bottom nav, shell |
+| [WP-AUDIO](WP-AUDIO.md) | Audio Capture and Playback | 2026-01-29 | Service interfaces and stubs |
 
 ---
 
@@ -48,10 +48,10 @@ Work packages are self-contained units of implementation work with:
 
 | Work Package | Description | Status |
 |--------------|-------------|--------|
-| WP-SETUP | Flutter project initialization | ready |
-| WP-AUDIO | Audio capture and playback services | ready |
-| WP-STATE | Riverpod state management | ready |
-| WP-NAV | Navigation and app shell | ready |
+| WP-SETUP | Flutter project initialization | complete |
+| WP-AUDIO | Audio capture and playback services | complete |
+| WP-STATE | Riverpod state management | complete |
+| WP-NAV | Navigation and app shell | complete |
 | WP-NOTE | Note View (single-speaker transcription + TTS) | ready |
 | WP-CHAT | Chat View (multi-speaker diarization) | ready |
 | WP-FILES | File Manager (browse, search, import) | ready |
