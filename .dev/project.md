@@ -540,6 +540,57 @@ enum ViewType {
 
 ---
 
+## Feasibility Considerations
+
+### FFI/UniFFI Integration (High Impact)
+
+- **Async Callback Semantics:** Does UniFFI support streaming callbacks from Rust to Swift/Kotlin for real-time segment delivery? What's the memory ownership model for audio buffers crossing the FFI boundary?
+- **Thread Safety:** How does Lexicon Core handle concurrent FFI calls from UI and audio threads? Is the Rust code `Send + Sync` where needed?
+- **Cancellation Propagation:** Can `cancel_transcription()` and `cancel_import()` interrupt long-running Rust operations cleanly, or will they block?
+
+### On-Device ML Resource Constraints (High Impact)
+
+- **Model Size vs. Storage:** What are the actual Whisper model sizes (tiny/base/small) and Kokoro TTS model sizes? What's the minimum viable footprint?
+- **Runtime Memory:** What's peak RAM usage during inference? Low-end targets (iPhone SE 2, Pixel 4a) have 3GB RAM—how much headroom exists after OS and app overhead?
+- **Thermal Throttling:** During sustained recording (10+ min), do continuous Whisper inferences cause thermal throttling that degrades latency past the 800ms target?
+- **Model Load Time:** Can models load in <2s on cold start (per performance requirements), or is lazy/background loading required?
+
+### Real-Time Audio Pipeline (Medium Impact)
+
+- **Resampling Latency:** What's the latency cost of 44.1/48kHz → 16kHz resampling on the platform audio layer? Does it fit within the 100ms recording start target?
+- **Buffer Management:** How large should audio buffers be to avoid underruns during STT processing spikes without adding perceptible latency?
+- **Background Audio:** How do iOS audio session interruptions (calls, Siri) and Android audio focus loss affect active recordings? Is graceful pause/resume possible?
+
+### Diarization System (High Impact)
+
+- **Algorithm Selection:** The project notes diarization is "configurable" (Decision D3)—but which algorithms (pyannote, whisper-clustering, sherpa-onnx) are viable for real-time mobile use? What are their on-device resource requirements?
+- **Streaming vs. Batch:** Can diarization run incrementally on streaming audio, or only on complete recordings? This affects Chat View's "live bubbles" requirement (CV-04).
+- **Speaker Limit:** The UI maps `speaker_id % 2`—but what happens with 3+ speakers? Will the underlying algorithm correctly cluster them even if UI collapses to 2 sides?
+
+### Lexicon Core Dependency (High Impact)
+
+- **API Stability:** Is the `lexicon-ffi` interface defined in project.md finalized, or aspirational? Which functions exist today vs. need development?
+- **Mobile Build Targets:** Does Lexicon Core currently build for `aarch64-apple-ios`, `aarch64-linux-android`, and `armv7-linux-androideabi`? Are there blocking dependencies (CUDA, system libs)?
+- **Error Semantics:** How does Lexicon Core communicate partial failures (e.g., some segments transcribed before error)? Does the mobile app need recovery logic?
+
+### Platform Version Constraints (Medium Impact)
+
+- **SwiftUI on iOS 13:** SwiftUI was introduced in iOS 13 with significant limitations (no `LazyVStack`, `@StateObject`, etc.). Are iOS 14+ features required, or can iOS 13 be realistically supported?
+- **Android API 26 Breadth:** API 26 includes some 32-bit ARM devices. Is 32-bit (`armv7`) Rust compilation tested with Whisper/Kokoro, or only 64-bit (`aarch64`)?
+
+### TTS Pipeline (Medium Impact)
+
+- **Synthesis Latency:** Can Kokoro TTS generate first audio chunk in <300ms (per requirements) for typical note lengths (100-500 words)?
+- **Regeneration UX:** When users edit text, TTS must regenerate. For long documents, is this fast enough to not frustrate users, or is caching/diffing needed?
+- **Voice Options:** Are multiple TTS voices available, or single voice? Does voice selection affect model size?
+
+### Build & Distribution (Medium Impact)
+
+- **Binary Size:** Embedded ML models inflate app size. What's the projected APK/IPA size? Does it exceed App Store (200MB cellular) or Play Store (150MB baseline APK) thresholds?
+- **App Store ML Review:** Does Apple require disclosure of on-device ML models? Are there compliance considerations for the embedded Whisper/Kokoro models?
+
+---
+
 ## Version History
 
 | Version | Date | Author | Changes |
