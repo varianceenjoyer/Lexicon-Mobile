@@ -5,216 +5,119 @@ status: in-progress
 created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
-category: TTS Pipeline
+category: TTS Pipeline — Mobile Integration
 priority: medium
-tags: [tts, kokoro, speech-synthesis, latency, audio-playback, voice]
+tags: [tts, audio-playback, regeneration-ux, avfoundation, exoplayer]
+scope: mobile-specific
 ---
 
-# R-TTS-01: TTS Pipeline Feasibility
+# R-TTS-01: TTS Pipeline — Mobile Integration
 
 ## Summary
 
-Research plan for validating Text-to-Speech pipeline feasibility for Lexicon Mobile's Note View. Focus areas: synthesis latency to meet <300ms first-audio target, regeneration UX when users edit transcribed text, and voice options availability and customization.
+Research plan for mobile-specific TTS integration concerns. The TTS engine (Kokoro) is provided by Lexicon Local Server; this research focuses on **mobile playback integration** and **regeneration UX**.
 
-## Context
+## Context: What Local Server Provides
 
-Note View (NV-04 through NV-08) provides TTS playback of transcribed text:
-- TTS generation triggered on recording stop/pause
-- First audio playback within 300ms of play tap
-- Text edits require TTS regeneration
-- Playback controls: play/pause, seek, progress display
+Per [Lexicon Local Server Roadmap](~/projects/Lexicon-Local-Server/.dev/design/roadmap.md):
 
-The project specifies Kokoro TTS via Lexicon Core. This research validates whether Kokoro can meet these requirements on mobile devices.
+| Work Package | Status | What It Provides |
+|--------------|--------|------------------|
+| **WP-TTS** | ✅ Complete | Kokoro TTS synthesis engine |
+| **Decision D4** | ✅ Complete | Platform fallback for non-English |
+| **TTS Quality** | ✅ Complete | MOS 3.0 validated |
 
-## Engineering Challenges
+**NOT mobile's concern:**
+- ~~EC-1: Synthesis Latency~~ → WP-TTS handles synthesis performance
+- ~~EC-3: Voice Options~~ → WP-TTS provides voice configuration via FFI
 
-### EC-1: Synthesis Latency
+## Mobile-Specific Engineering Challenges
 
-**Problem Statement:**
-Can Kokoro TTS generate first audio chunk in <300ms (per requirements) for typical note lengths on mobile devices?
-
-**TTS Pipeline:**
-```
-[Play Tap] → [Text to Kokoro] → [First Chunk Generated] → [Audio Output]
-    0ms          ~50ms               ??? ms                  ~50ms
-                                 Target: <200ms
-```
-
-**Specific Questions:**
-- [ ] What's Kokoro's time-to-first-audio for short text (1-10 words)?
-- [ ] What's the latency for medium text (50-100 words)?
-- [ ] What's the latency for long text (500+ words)?
-- [ ] Does Kokoro support streaming synthesis (chunk-by-chunk)?
-- [ ] Can synthesis start while previous chunks are playing?
-- [ ] What's the performance on low-end devices (iPhone SE 2, Pixel 4a)?
-
-**Latency Expectations (to be validated):**
-
-| Text Length | Target TTFA | Acceptable | Notes |
-|-------------|-------------|------------|-------|
-| 1-10 words | <100ms | <200ms | Common for quick notes |
-| 50-100 words | <200ms | <400ms | Typical note |
-| 500+ words | <300ms | <600ms | Long note, streaming critical |
-
-**Existing Solutions to Investigate:**
-- Kokoro streaming synthesis API
-- Chunked synthesis (sentence-by-sentence)
-- Audio buffer pre-filling during synthesis
-- Background synthesis while recording
-
-**Research Actions:**
-- [ ] Benchmark Kokoro TTFA on various text lengths
-- [ ] Test on low-end target devices
-- [ ] Evaluate streaming vs batch synthesis
-- [ ] Measure CPU/memory usage during synthesis
-- [ ] Determine if synthesis can run concurrently with playback
-- [ ] Document latency characteristics for UI design
-
-### EC-2: Regeneration UX
+### EC-2: Regeneration UX (Mobile)
 
 **Problem Statement:**
-When users edit transcribed text, TTS must regenerate. For long documents, is this fast enough to not frustrate users, or is caching/diffing needed?
-
-**Edit Scenarios:**
-
-| Scenario | Frequency | Complexity |
-|----------|-----------|------------|
-| Fix typo (1-2 words) | High | Should be instant |
-| Rewrite sentence | Medium | Regenerate sentence only? |
-| Add paragraph | Low | Append synthesis? |
-| Major rewrite | Low | Full regeneration acceptable |
+When users edit transcribed text in Note View, the mobile app must manage TTS regeneration. This is a UX/caching decision for the mobile client.
 
 **Specific Questions:**
-- [ ] Can Kokoro regenerate individual sentences without full re-synthesis?
-- [ ] Is sentence-level caching feasible (hash text → audio)?
-- [ ] How much storage would cached TTS consume?
 - [ ] Should regeneration happen on-demand (play tap) or immediately on edit?
-- [ ] Can we diff old/new text and only regenerate changed portions?
-- [ ] What's the UX if regeneration takes 2+ seconds?
+- [ ] Is sentence-level caching worth the complexity for mobile?
+- [ ] How much local storage should be allocated for TTS cache?
+- [ ] What's the UX if regeneration takes 2+ seconds? (loading indicator, partial playback)
+- [ ] Should edits invalidate the entire cache or use diff-based invalidation?
 
-**Caching Strategies:**
+**Caching Strategies (Mobile Decision):**
 
-| Strategy | Pros | Cons |
-|----------|------|------|
-| No cache | Simple, no storage | Slow on repeat plays |
-| Full document cache | Fast replay | Invalidated on any edit |
-| Sentence-level cache | Partial regeneration | Complex invalidation |
-| Paragraph-level cache | Balance of above | Medium complexity |
+| Strategy | Pros | Cons | Recommended? |
+|----------|------|------|--------------|
+| No cache | Simple | Re-synthesize on every play | MVP |
+| Full document cache | Fast replay | Invalidated on any edit | Consider for v2 |
+| Sentence-level cache | Partial regeneration | Complex implementation | Future |
 
 **Research Actions:**
-- [ ] Test Kokoro's ability to synthesize partial text
-- [ ] Prototype sentence-level caching system
-- [ ] Measure cache storage requirements
-- [ ] Design cache invalidation strategy
-- [ ] Evaluate on-edit vs on-play regeneration UX
+- [ ] Prototype on-demand regeneration flow
+- [ ] Measure typical TTS latency via FFI for UX design
+- [ ] Design loading/progress UI for regeneration
+- [ ] Decide cache strategy based on typical usage patterns
 - [ ] User test acceptable regeneration delays
 
-**Proposed Regeneration Flow:**
-
-```
-[User Edits Text]
-       │
-       ▼
-[Detect Changed Sentences]
-       │
-       ▼
-[Invalidate Cache for Changed]
-       │
-       ▼
-[On Next Play: Regenerate Changed + Use Cached]
-       │
-       ▼
-[Seamless Playback]
-```
-
-### EC-3: Voice Options
+### EC-4: Audio Playback Integration (Mobile)
 
 **Problem Statement:**
-Are multiple TTS voices available in Kokoro, or is it single-voice? Does voice selection affect model size or synthesis quality?
+How do we integrate TTS audio output from Lexicon Core with iOS/Android platform playback APIs?
 
-**Specific Questions:**
-- [ ] How many voices does Kokoro provide?
-- [ ] Are voices bundled in one model or separate model files?
-- [ ] What's the size impact of additional voices?
-- [ ] Can voices be downloaded on-demand?
-- [ ] Are there male/female voice options?
-- [ ] Are there different language voices (for non-English TTS)?
-- [ ] Can voice characteristics be adjusted (speed, pitch)?
-
-**Voice Configuration Options:**
-
-| Option | User Control | Implementation |
-|--------|--------------|----------------|
-| Voice selection | Dropdown in settings | Load different model/config |
-| Speech rate | Slider (0.5x - 2.0x) | Synthesis parameter |
-| Pitch | Slider (optional) | Synthesis parameter |
-| Volume | System control | Platform audio |
-
-**Existing Solutions to Investigate:**
-- Kokoro voice model variants
-- VITS/ONNX voice model architecture
-- On-demand voice downloading patterns
-- Platform TTS fallback (AVSpeechSynthesizer, Android TTS)
-
-**Research Actions:**
-- [ ] Inventory available Kokoro voices
-- [ ] Measure model size per voice
-- [ ] Test voice switching performance
-- [ ] Evaluate speech rate/pitch adjustment APIs
-- [ ] Consider platform TTS as fallback option
-- [ ] Document voice options for product decision
-
-### EC-4: Audio Playback Integration
-
-**Problem Statement:**
-How do we integrate synthesized audio with platform playback APIs for seeking, progress display, and background playback?
-
-**Playback Requirements (from NV-06):**
+**Playback Requirements (from project.md NV-06):**
 - Play/pause control
 - Seek via progress slider
 - Time display (current / total)
 - Gapless chunk playback
 
+**Platform APIs:**
+
+| Platform | Playback API | Streaming Support | Seeking |
+|----------|--------------|-------------------|---------|
+| iOS | AVAudioEngine | Yes | Manual implementation |
+| iOS | AVAudioPlayer | Limited | Built-in |
+| Android | ExoPlayer/Media3 | Yes | Built-in |
+| Android | MediaPlayer | Limited | Built-in |
+
 **Specific Questions:**
-- [ ] What audio format does Kokoro output (PCM, WAV, etc.)?
-- [ ] How do we concatenate streamed chunks for seamless playback?
-- [ ] Can we seek within synthesized audio (requires full synthesis first)?
-- [ ] How do we calculate total duration before synthesis completes?
-- [ ] Should we buffer full audio before allowing playback?
-- [ ] How do we handle playback during active synthesis?
-
-**Playback Architecture Options:**
-
-| Approach | Seeking | Progress | Complexity |
-|----------|---------|----------|------------|
-| Full synthesis → Play | Full | Accurate | Simple, slow start |
-| Stream + buffer | After buffer | Estimated → Actual | Medium |
-| Chunk-by-chunk live | Limited | Progressive | Complex |
+- [ ] What audio format does Lexicon Core TTS return (PCM samples, WAV)?
+- [ ] Does Lexicon Core support streaming TTS (chunk callbacks)?
+- [ ] How do we buffer streamed audio for seeking support?
+- [ ] How do we estimate total duration before synthesis completes?
+- [ ] Should we wait for full synthesis before enabling playback?
 
 **Research Actions:**
-- [ ] Document Kokoro output format and streaming API
-- [ ] Prototype audio player with streamed chunks
+- [ ] Document Lexicon Core TTS output format from FFI interface
+- [ ] Prototype iOS audio player with TTS output
+- [ ] Prototype Android audio player with TTS output
 - [ ] Implement seeking within synthesized audio
+- [ ] Test gapless playback of streamed chunks
 - [ ] Design progress indicator for streaming playback
-- [ ] Test gapless playback of consecutive chunks
-- [ ] Evaluate iOS AVAudioPlayer vs AVAudioEngine for playback
 
-## Related Inquiry Areas
+**Playback Architecture:**
 
-- **Concurrent STT + TTS:** Can both run simultaneously, or resource conflict?
-- **Background TTS:** Should TTS continue if app is backgrounded?
-- **Accessibility:** How does TTS interact with VoiceOver/TalkBack?
-- **Language support:** What languages does Kokoro support?
+```
+Lexicon Core (TTS)        Mobile App
+      │                      │
+  [AudioStream]  ───FFI───▶  [Platform Buffer]
+      │                      │
+  (PCM chunks)              [AVAudioEngine / ExoPlayer]
+                             │
+                            [Playback Controls]
+                             ├── Play/Pause
+                             ├── Seek
+                             └── Progress Display
+```
 
 ## Success Criteria
 
 | Criterion | Target | Minimum Viable |
 |-----------|--------|----------------|
-| Time to first audio | <300ms | <500ms |
-| Regeneration (1 sentence) | <500ms | <1s |
-| Voice options | 2+ voices | 1 voice |
+| Regeneration UX | Seamless with loading indicator | Blocking modal OK |
+| Time to playback (cached) | <100ms | <300ms |
 | Seek accuracy | <100ms | <500ms |
-| Gapless playback | No audible gaps | Minimal gaps |
+| Gapless playback | No audible gaps | Minimal gaps acceptable |
 
 ## Findings Log
 
@@ -224,21 +127,18 @@ How do we integrate synthesized audio with platform playback APIs for seeking, p
 
 ## Recommendation
 
-**Status:** PENDING RESEARCH
+**Status:** PENDING RESEARCH — Mobile-specific integration only
 
 ## References
 
-- [Kokoro TTS](https://github.com/hexgrad/kokoro) - Target TTS engine
-- [VITS Paper](https://arxiv.org/abs/2106.06103) - Underlying architecture
-- [AVAudioEngine Playback](https://developer.apple.com/documentation/avfaudio/avaudioengine)
-- [ExoPlayer](https://developer.android.com/guide/topics/media/exoplayer) - Android playback
-- Platform TTS: AVSpeechSynthesizer (iOS), android.speech.tts (Android)
+- Lexicon Core FFI interface (from Local Server)
+- [AVAudioEngine](https://developer.apple.com/documentation/avfaudio/avaudioengine)
+- [ExoPlayer/Media3](https://developer.android.com/guide/topics/media/exoplayer)
 
 ## Next Agent Actions
 
-1. Start with EC-1 (Synthesis Latency) - critical for UX validation
-2. Benchmark Kokoro TTFA on representative text samples
-3. Test on low-end devices to establish performance floor
-4. EC-2 (Regeneration) depends on EC-1 findings
-5. EC-3 (Voices) can proceed in parallel
-6. Update this document with findings as you progress
+1. Review Lexicon Core FFI interface for TTS output format
+2. Prototype basic iOS playback with AVAudioEngine
+3. Prototype basic Android playback with ExoPlayer
+4. Design regeneration UX based on measured latencies
+5. Update this document with findings

@@ -5,173 +5,111 @@ status: in-progress
 created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
-category: Platform Version Constraints
+category: Platform Version Constraints — UI Framework Decisions
 priority: medium
-tags: [ios, android, swiftui, jetpack-compose, api-level, arm32, compatibility]
+tags: [ios, android, swiftui, jetpack-compose, api-level, compatibility]
+scope: mobile-specific
 ---
 
-# R-PLAT-01: Platform Version Constraints Feasibility
+# R-PLAT-01: Platform Version Constraints — UI Framework Decisions
 
 ## Summary
 
-Research plan for validating minimum platform version targets for Lexicon Mobile. Focus areas: SwiftUI limitations on iOS 13 vs iOS 14+, and Android API 26 implications for 32-bit ARM device support and Rust cross-compilation.
+Research plan for determining minimum platform versions for Lexicon Mobile UI development. Focus is on **SwiftUI feature availability** and **Jetpack Compose requirements** — pure mobile UI decisions.
 
-## Context
+## Context: What Local Server Handles
 
-Project targets:
-- iOS 13+ with SwiftUI
-- Android API 26+ with Jetpack Compose
+Per [Lexicon Local Server Roadmap](~/projects/Lexicon-Local-Server/.dev/design/roadmap.md):
 
-These minimum versions were chosen for broad device coverage, but may conflict with:
-- Modern SwiftUI APIs required for the UI design
-- 32-bit ARM Rust compilation for ML inference
-- Platform audio APIs needed for real-time capture
+| Work Package | Status | What It Handles |
+|--------------|--------|-----------------|
+| **WP-ANDROID** | 🔄 Partial | STT+TTS working, architecture targets |
+| **WP-IOS** | ⬜ Ready | iOS build targets |
 
-This research determines if minimum versions should be raised or if workarounds exist.
+**NOT mobile UI's concern:**
+- ~~EC-2 (armv7 builds)~~ → WP-ANDROID handles Rust cross-compilation
+- Build target selection is a Local Server decision
 
-## Engineering Challenges
+**Mobile UI's responsibility:** Choosing minimum OS versions that support required UI framework features.
 
-### EC-1: SwiftUI on iOS 13
+## Mobile-Specific Engineering Challenges
+
+### EC-1: SwiftUI Version Requirements
 
 **Problem Statement:**
-SwiftUI was introduced in iOS 13 with significant limitations. Are iOS 14+ features required for Lexicon Mobile, or can iOS 13 be realistically supported?
+SwiftUI has significant feature gaps between iOS 13, 14, and 15. Which minimum version provides the features Lexicon Mobile needs?
 
 **SwiftUI Feature Availability:**
 
-| Feature | iOS 13 | iOS 14 | iOS 15 | iOS 16 | Used In Lexicon? |
-|---------|--------|--------|--------|--------|------------------|
-| Basic Views (VStack, HStack, etc.) | ✓ | ✓ | ✓ | ✓ | Yes |
-| @State, @Binding | ✓ | ✓ | ✓ | ✓ | Yes |
-| @ObservedObject | ✓ | ✓ | ✓ | ✓ | Yes |
-| @StateObject | ✗ | ✓ | ✓ | ✓ | Likely needed |
-| @EnvironmentObject | ✓ | ✓ | ✓ | ✓ | Yes |
-| LazyVStack/LazyHStack | ✗ | ✓ | ✓ | ✓ | Chat bubbles |
-| ScrollViewReader | ✗ | ✓ | ✓ | ✓ | Auto-scroll chat |
-| onChange(of:) | ✗ | ✓ | ✓ | ✓ | State reactions |
-| @AppStorage | ✗ | ✓ | ✓ | ✓ | Settings |
-| ProgressView | ✗ | ✓ | ✓ | ✓ | Loading states |
-| Label | ✗ | ✓ | ✓ | ✓ | Accessibility |
-| @FocusState | ✗ | ✗ | ✓ | ✓ | Text editing |
-| searchable() | ✗ | ✗ | ✓ | ✓ | File search |
-| swipeActions() | ✗ | ✗ | ✓ | ✓ | Delete gesture |
-| AsyncImage | ✗ | ✗ | ✓ | ✓ | Not needed |
-| NavigationStack | ✗ | ✗ | ✗ | ✓ | Navigation |
+| Feature | iOS 13 | iOS 14 | iOS 15 | Used In Lexicon? |
+|---------|--------|--------|--------|------------------|
+| Basic Views | ✓ | ✓ | ✓ | Yes |
+| @State, @Binding | ✓ | ✓ | ✓ | Yes |
+| @ObservedObject | ✓ | ✓ | ✓ | Yes |
+| **@StateObject** | ✗ | ✓ | ✓ | **Yes - ViewModel lifecycle** |
+| **LazyVStack** | ✗ | ✓ | ✓ | **Yes - Chat bubbles** |
+| **ScrollViewReader** | ✗ | ✓ | ✓ | **Yes - Auto-scroll chat** |
+| **onChange(of:)** | ✗ | ✓ | ✓ | **Yes - State reactions** |
+| ProgressView | ✗ | ✓ | ✓ | Yes - Loading states |
+| @FocusState | ✗ | ✗ | ✓ | Nice-to-have |
+| searchable() | ✗ | ✗ | ✓ | File search (can workaround) |
+| swipeActions() | ✗ | ✗ | ✓ | Delete gesture (can workaround) |
+
+**Analysis:**
+- iOS 13 requires UIKit wrappers for `LazyVStack` and `ScrollViewReader` — significant effort
+- iOS 14 provides all critical features
+- iOS 15 adds conveniences but not blockers
 
 **Specific Questions:**
-- [ ] Which iOS 14+ features are essential vs nice-to-have?
-- [ ] Can `@StateObject` be replaced with `@ObservedObject` + manual lifecycle?
-- [ ] Can `LazyVStack` be polyfilled or replaced for iOS 13?
-- [ ] What's the iOS 13 device population in 2026?
-- [ ] Does dropping iOS 13 significantly reduce potential users?
-- [ ] Are there iOS 13 SwiftUI bugs that would cause problems?
-
-**iOS 13 Workarounds:**
-
-| Missing Feature | Workaround | Complexity |
-|-----------------|------------|------------|
-| @StateObject | onAppear init + @ObservedObject | Medium |
-| LazyVStack | UIKit UITableView wrapper | High |
-| ScrollViewReader | UIKit UIScrollView wrapper | High |
-| onChange(of:) | Combine publisher + onReceive | Medium |
-| ProgressView | Custom view | Low |
-| searchable() | Custom search bar | Medium |
-| swipeActions() | Custom gesture | Medium |
+- [ ] What's iOS 13 market share in 2026? (Likely <2%)
+- [ ] Is the development cost of iOS 13 workarounds justified?
+- [ ] Does iOS 14 provide everything needed for Chat View?
+- [ ] Are there iOS 14 SwiftUI bugs that affect our use cases?
 
 **Research Actions:**
-- [ ] Audit all SwiftUI features needed for Lexicon Mobile UI
-- [ ] Identify which features have no iOS 13 workaround
-- [ ] Estimate development cost of iOS 13 workarounds
-- [ ] Research iOS 13 market share (App Store analytics, third-party data)
-- [ ] Build prototype UI targeting iOS 13 to validate feasibility
-- [ ] Recommend minimum iOS version with rationale
+- [ ] Research current iOS version market share data
+- [ ] Prototype Chat View with LazyVStack + ScrollViewReader (iOS 14)
+- [ ] Prototype Note View with @StateObject lifecycle
+- [ ] Verify all required features work on iOS 14 simulator
+- [ ] Make minimum version recommendation with rationale
 
-**iOS Version Market Share (to be validated):**
-
-| Version | Approx. Share (2026) | Devices |
-|---------|---------------------|---------|
-| iOS 17+ | ~70% | iPhone XS and newer |
-| iOS 16 | ~15% | iPhone 8 and newer |
-| iOS 15 | ~10% | iPhone 6s and newer |
-| iOS 14 | ~4% | iPhone 6s and newer |
-| iOS 13 | ~1% | iPhone 6s and newer |
-
-### EC-2: Android API 26 and 32-bit ARM
-
-**Problem Statement:**
-Android API 26 (Android 8.0) includes devices with 32-bit ARM processors. Is Rust cross-compilation for `armv7` tested with Whisper/Kokoro ML libraries?
-
-**Android Architecture Distribution:**
-
-| Architecture | API 26+ Devices | Notes |
-|--------------|-----------------|-------|
-| arm64-v8a (aarch64) | ~95% | Modern devices, 64-bit |
-| armeabi-v7a (armv7) | ~5% | Older/budget devices, 32-bit |
-| x86_64 | <1% | Emulators, Chromebooks |
-| x86 | <1% | Old emulators |
-
-**Specific Questions:**
-- [ ] Does whisper.cpp compile for armv7-linux-androideabi?
-- [ ] Does Kokoro TTS compile for armv7?
-- [ ] What's the performance penalty on 32-bit vs 64-bit?
-- [ ] Are there memory limitations on 32-bit (4GB address space)?
-- [ ] What percentage of API 26 devices are 32-bit only?
-- [ ] Would dropping armv7 significantly reduce reach?
-
-**32-bit ARM Concerns:**
-
-| Concern | Impact | Mitigation |
-|---------|--------|------------|
-| 4GB address space | May limit model size | Use smaller models |
-| No 64-bit SIMD (NEON) | Slower inference | Accept or drop support |
-| Older CPUs | Slower overall | Accept or drop support |
-| Rust target support | May have issues | Test thoroughly |
-| NDK toolchain | Deprecated path | Use modern NDK |
-
-**Research Actions:**
-- [ ] Attempt armv7 Rust build with whisper.cpp bindings
-- [ ] Test armv7 build on actual 32-bit Android device
-- [ ] Measure inference performance: armv7 vs aarch64
-- [ ] Research API 26 32-bit-only device population
-- [ ] Evaluate effort to support vs benefit of 32-bit
-- [ ] Recommend architecture support matrix
+**Preliminary Recommendation:** iOS 14+ (pending validation)
 
 ### EC-3: Jetpack Compose Version Requirements
 
 **Problem Statement:**
-Jetpack Compose has evolved significantly. Which Compose version is needed for Lexicon Mobile features, and what Android API does it require?
+Which Jetpack Compose version provides the features needed for Lexicon Mobile Android?
 
 **Compose Feature Availability:**
 
 | Feature | Compose 1.0 | Compose 1.2+ | Compose 1.5+ | Used In Lexicon? |
 |---------|-------------|--------------|--------------|------------------|
 | Basic layouts | ✓ | ✓ | ✓ | Yes |
-| LazyColumn/LazyRow | ✓ | ✓ | ✓ | Chat bubbles |
+| LazyColumn/LazyRow | ✓ | ✓ | ✓ | Yes - Chat bubbles |
 | Material 3 | ✗ | Partial | ✓ | Recommended |
 | Pull-to-refresh | ✗ | ✓ | ✓ | File list |
 | WindowInsets | ✗ | ✓ | ✓ | Edge-to-edge |
-| Paging 3 integration | ✗ | ✓ | ✓ | Large file lists |
 
 **Android API vs Compose:**
 
-| Compose Version | Min Android API | Notes |
-|-----------------|-----------------|-------|
-| 1.0.x | API 21 | Initial release |
-| 1.2.x | API 21 | Stable improvements |
-| 1.5.x | API 21 | Material 3 stable |
-| 1.6.x | API 21 | Latest stable |
+| Compose Version | Min Android API |
+|-----------------|-----------------|
+| 1.0.x - 1.6.x | API 21 |
+
+Compose itself supports API 21+, so the API level decision is independent of Compose version.
 
 **Specific Questions:**
-- [ ] Which Compose version provides all needed features?
-- [ ] Are there API 26 specific behaviors that affect Compose?
-- [ ] Does Compose Material 3 work well on API 26 devices?
+- [ ] Which Compose version should we target? (1.5+ for Material 3)
+- [ ] Does API 26 have Compose-specific quirks?
 - [ ] What's the Compose library size impact on APK?
 
 **Research Actions:**
-- [ ] Audit Compose features needed for Lexicon Mobile UI
-- [ ] Test Compose UI on API 26 emulator/device
-- [ ] Verify Material 3 theming on older Android versions
+- [ ] Test Compose UI on API 26 emulator
+- [ ] Verify Material 3 theming works on API 26
 - [ ] Measure Compose library contribution to APK size
-- [ ] Document any API 26 specific quirks or workarounds
+- [ ] Document any API 26 specific issues
+
+**Preliminary Recommendation:** Compose 1.5+ with API 26 minimum
 
 ### EC-4: Platform API Dependencies
 
@@ -180,55 +118,41 @@ Do audio capture and file access APIs work correctly on minimum supported versio
 
 **API Availability:**
 
-| API | iOS 13 | iOS 14+ | API 26 | API 28+ |
+| API | iOS 14 | iOS 15+ | API 26 | API 28+ |
 |-----|--------|---------|--------|---------|
 | AVAudioEngine | ✓ | ✓ | N/A | N/A |
 | AVAudioSession | ✓ | ✓ | N/A | N/A |
 | AAudio | N/A | N/A | ✓ | ✓ (improved) |
-| MediaRecorder | N/A | N/A | ✓ | ✓ |
-| Files app integration | ✓ | ✓ | N/A | N/A |
 | Storage Access Framework | N/A | N/A | ✓ | ✓ |
 | Scoped Storage | N/A | N/A | Optional | Required (API 30) |
 
-**Specific Questions:**
-- [ ] Are there AAudio bugs on API 26-27 that affect recording?
-- [ ] Does Scoped Storage impact file import on API 30+?
-- [ ] Are there iOS 13 AVAudioEngine issues to be aware of?
-
 **Research Actions:**
-- [ ] Test audio capture on minimum version devices/emulators
+- [ ] Test audio capture on iOS 14 simulator/device
+- [ ] Test audio capture on API 26 emulator/device
 - [ ] Verify file picker/import on all target versions
-- [ ] Document platform-specific code paths if needed
-- [ ] Identify must-have vs nice-to-have platform features
+- [ ] Document any platform-specific code paths needed
 
 ## Decision Framework
-
-**Minimum Version Recommendation Criteria:**
 
 | Factor | Weight | Consideration |
 |--------|--------|---------------|
 | User reach | High | % of potential users excluded |
 | Development cost | High | Workaround complexity |
-| Maintenance burden | Medium | Ongoing version-specific code |
 | Feature parity | Medium | Can we deliver same UX? |
-| Performance | Medium | Acceptable on older devices? |
 
-**Proposed Decision Matrix:**
+**Proposed Minimum Versions:**
 
-| Platform | Option A (Broader) | Option B (Moderate) | Option C (Modern) |
-|----------|-------------------|---------------------|-------------------|
-| iOS | iOS 13 | iOS 14 | iOS 15 |
-| Android | API 26 + armv7 | API 26 arm64 only | API 28 arm64 |
-| Trade-off | Max reach, high dev cost | Good reach, moderate cost | Lower reach, low cost |
+| Platform | Recommended | Rationale |
+|----------|-------------|-----------|
+| iOS | 14.0 | SwiftUI features (LazyVStack, @StateObject) |
+| Android | API 26 | Per project.md, Compose compatible |
 
 ## Success Criteria
 
 | Criterion | Target |
 |-----------|--------|
-| iOS minimum version | Justified with market data |
-| Android minimum API | Justified with market data |
-| armv7 decision | Clear go/no-go with rationale |
-| Workaround inventory | Complete for chosen minimum |
+| iOS minimum version | Justified with feature analysis |
+| Compose version | Selected with rationale |
 | Prototype validation | UI works on minimum versions |
 
 ## Findings Log
@@ -239,22 +163,19 @@ Do audio capture and file access APIs work correctly on minimum supported versio
 
 ## Recommendation
 
-**Status:** PENDING RESEARCH
+**Status:** PENDING RESEARCH — UI framework decisions only
 
 ## References
 
 - [SwiftUI Availability](https://developer.apple.com/documentation/swiftui)
-- [iOS Version Stats](https://developer.apple.com/support/app-store/) - Apple official
-- [Android Version Distribution](https://apilevels.com/) - Community tracker
+- [iOS Version Stats](https://developer.apple.com/support/app-store/)
 - [Jetpack Compose Releases](https://developer.android.com/jetpack/androidx/releases/compose)
-- [Android NDK ABIs](https://developer.android.com/ndk/guides/abis)
-- [Rust Android Targets](https://doc.rust-lang.org/rustc/platform-support.html)
+- [Android Version Distribution](https://apilevels.com/)
 
 ## Next Agent Actions
 
-1. Start with EC-1 (SwiftUI iOS 13) - has most direct impact on UI development
-2. Research current iOS version market share data
-3. Prototype key UI screens targeting iOS 13 to find blockers
-4. EC-2 (armv7) can proceed in parallel with build testing
-5. Make version recommendations based on cost/benefit analysis
-6. Update this document with findings as you progress
+1. Research current iOS version market share
+2. Prototype Chat View with iOS 14 SwiftUI features
+3. Test Compose UI on API 26 Android
+4. Make final minimum version recommendations
+5. Update this document with findings

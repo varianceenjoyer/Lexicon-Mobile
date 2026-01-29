@@ -5,247 +5,175 @@ status: in-progress
 created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
-category: Build & Distribution
+category: Build & Distribution — App Store Compliance
 priority: medium
-tags: [app-store, play-store, binary-size, ml-models, review, distribution]
+tags: [app-store, play-store, binary-size, distribution, compliance]
+scope: mobile-specific
 ---
 
-# R-DIST-01: Build & Distribution Feasibility
+# R-DIST-01: Build & Distribution — App Store Compliance
 
 ## Summary
 
-Research plan for validating app store distribution feasibility for Lexicon Mobile. Focus areas: binary size impact from embedded ML models, App Store and Play Store size thresholds, and compliance considerations for on-device ML model distribution.
+Research plan for app store distribution compliance for Lexicon Mobile. Focus is on **binary size constraints**, **store policy compliance**, and **model delivery strategy** as it affects the mobile app package.
 
-## Context
+## Context: What Local Server Handles
 
-Lexicon Mobile embeds ML models (Whisper STT, Kokoro TTS) directly in the app binary. This significantly inflates app size compared to typical mobile apps. Distribution constraints include:
-- App Store: 200MB limit for cellular downloads (without user confirmation)
-- Play Store: 150MB baseline APK limit (AAB allows larger with splits)
-- User perception: Large apps may deter downloads
+Per [Lexicon Local Server Roadmap](~/projects/Lexicon-Local-Server/.dev/design/roadmap.md):
 
-Additionally, Apple has specific requirements around on-device ML that may affect App Store review.
+| Work Package | Status | What It Handles |
+|--------------|--------|-----------------|
+| **WP-MODEL** | ✅ Complete | Model management, device profiling, download |
+| **WP-BUILD** | ✅ Complete | Build pipeline, distribution |
+| **Decision D1** | ✅ Complete | Immediate model download on first launch |
 
-## Engineering Challenges
+**Local Server provides:**
+- Model selection based on device capability
+- Model download infrastructure
+- Model integrity verification (WP-HASH-VERIFY)
 
-### EC-1: Binary Size
+**Mobile's responsibility:** App store packaging, compliance, and first-launch UX for model download.
+
+## Mobile-Specific Engineering Challenges
+
+### EC-1: Binary Size and Store Thresholds
 
 **Problem Statement:**
-Embedded ML models inflate app size. What's the projected APK/IPA size, and does it exceed store thresholds?
+What's the mobile app binary size without bundled models, and how does this affect app store distribution?
 
-**Size Budget Analysis:**
+**Size Budget (Mobile App Only):**
 
 | Component | Estimated Size | Notes |
 |-----------|---------------|-------|
-| Base app (UI, logic) | 10-20 MB | Swift/Kotlin + frameworks |
-| Whisper model (tiny) | 25-40 MB | Quantized Q4/Q5 |
-| Whisper model (base) | 50-80 MB | Quantized Q4/Q5 |
-| Whisper model (small) | 150-250 MB | Quantized Q4/Q5 |
-| Kokoro TTS model | 50-100 MB | Estimated, needs validation |
-| Diarization model | 20-50 MB | If separate from Whisper |
-| SQLite + libs | 2-5 MB | Database engine |
-| Rust FFI library | 5-15 MB | Compiled Lexicon Core |
-| **Total (tiny)** | **~120-230 MB** | At threshold |
-| **Total (base)** | **~150-280 MB** | Exceeds threshold |
-| **Total (small)** | **~250-450 MB** | Significantly exceeds |
-
-**Specific Questions:**
-- [ ] What are exact model sizes after quantization?
-- [ ] Can models be compressed further in the bundle?
-- [ ] Does iOS App Thinning help (architecture-specific slices)?
-- [ ] Can Android App Bundle (AAB) with splits reduce download size?
-- [ ] What's acceptable download size for target users?
-- [ ] Should models be downloaded post-install instead of bundled?
+| iOS app (UI, logic) | 10-15 MB | SwiftUI + frameworks |
+| Android app (UI, logic) | 8-12 MB | Compose + Kotlin |
+| Lexicon Core library | 5-15 MB | FFI library, no models |
+| **Total (no models)** | **~25-40 MB** | Well under thresholds |
 
 **Store Thresholds:**
 
-| Platform | Limit | Type | Consequence |
-|----------|-------|------|-------------|
-| iOS App Store | 200 MB | Cellular download | Warning shown |
-| iOS App Store | 4 GB | Maximum | Hard limit |
-| Play Store | 150 MB | Base APK | Must use AAB |
-| Play Store | 200 MB | AAB download | Per config |
-| Play Store | 2 GB | Maximum | Hard limit |
+| Platform | Limit | Our Size | Status |
+|----------|-------|----------|--------|
+| iOS App Store | 200 MB cellular | ~25-40 MB | ✅ OK |
+| Play Store | 150 MB base APK | ~25-40 MB | ✅ OK |
+
+**Key Insight:** Since models are downloaded via Lexicon Core (D1 decision), the app binary itself is small. Models are **not bundled** in the app package.
+
+**Specific Questions:**
+- [ ] What's the actual compiled size of Lexicon Core library per platform?
+- [ ] Does iOS App Thinning further reduce download size?
+- [ ] Does Android App Bundle help with architecture-specific builds?
 
 **Research Actions:**
 - [ ] Build release binary and measure actual sizes
-- [ ] Test iOS App Thinning effect on download size
-- [ ] Test Android AAB with asset packs
-- [ ] Compare bundled vs on-demand model download
-- [ ] Survey competitor apps with on-device ML for size benchmarks
-- [ ] Document size optimization strategies
+- [ ] Verify model download happens outside app bundle
+- [ ] Document final app store package sizes
 
-### EC-2: On-Demand Model Download
+### EC-2: First-Launch Model Download UX
 
 **Problem Statement:**
-If bundled models exceed size thresholds, can models be downloaded post-install? What's the UX impact?
+Since models download on first launch (D1), what UX does the mobile app need to provide?
 
-**Download Strategies:**
+**User Flow:**
 
-| Strategy | First Launch UX | Size Impact | Complexity |
-|----------|-----------------|-------------|------------|
-| Bundle all | Immediate use | Largest | Low |
-| Bundle tiny, download larger | Quick start, upgrade later | Medium | Medium |
-| Download all on first launch | Wait before first use | Smallest install | Medium |
-| Stream models (chunks) | Progressive capability | Smallest | High |
+```
+App Launch → Check Models → Download Required? → Show Progress → Ready
+                                    │
+                              (if no models)
+                                    │
+                                    ▼
+                          ┌────────────────────────┐
+                          │  Downloading Speech    │
+                          │  Recognition Model...  │
+                          │                        │
+                          │  ████████░░░░ 65%      │
+                          │                        │
+                          │  [Cancel]              │
+                          └────────────────────────┘
+```
 
 **Specific Questions:**
-- [ ] What's acceptable wait time on first launch?
-- [ ] Can we use iOS On-Demand Resources (ODR)?
-- [ ] Can we use Android Play Asset Delivery?
-- [ ] How do we handle download failures?
-- [ ] Can users choose model quality tier?
-- [ ] What happens if model download is interrupted?
-
-**Platform Download APIs:**
-
-| Platform | API | Max Size | Background? |
-|----------|-----|----------|-------------|
-| iOS | On-Demand Resources | 20 GB total | Yes |
-| iOS | Background URLSession | Unlimited | Yes |
-| Android | Play Asset Delivery | 2 GB per pack | Yes |
-| Android | Download Manager | Unlimited | Yes |
+- [ ] How does Lexicon Core signal model download progress?
+- [ ] What UI should display during download? (modal, inline, splash screen)
+- [ ] How do we handle download failures? (retry, offline mode)
+- [ ] Can users skip download and use app with limited functionality?
 
 **Research Actions:**
-- [ ] Prototype iOS On-Demand Resources for models
-- [ ] Prototype Android Play Asset Delivery
-- [ ] Design first-launch model download UX
-- [ ] Implement download progress UI
-- [ ] Handle offline/airplane mode scenarios
-- [ ] Test download resume after interruption
+- [ ] Review Lexicon Core FFI for download progress callbacks
+- [ ] Design download progress UI for iOS and Android
+- [ ] Implement error handling for download failures
+- [ ] Test offline/airplane mode scenarios
 
-**First-Launch UX Flow (if download required):**
-
-```
-┌────────────────────────────────────────┐
-│         Welcome to Lexicon             │
-│                                        │
-│  To get started, we need to download   │
-│  the speech recognition model.         │
-│                                        │
-│  📦 Whisper Base (75 MB)               │
-│  ☁️ Requires WiFi recommended          │
-│                                        │
-│  [Download Now]  [Use Smaller Model]   │
-│                                        │
-│  ────────────────────────────── 45%    │
-└────────────────────────────────────────┘
-```
-
-### EC-3: App Store ML Review Considerations
+### EC-3: App Store Compliance
 
 **Problem Statement:**
-Does Apple require disclosure of on-device ML models? Are there compliance considerations for embedded Whisper/Kokoro models?
+What App Store and Play Store policies affect Lexicon Mobile?
 
-**Apple Review Considerations:**
+**Apple App Store Considerations:**
 
-| Requirement | Applies? | Action Needed |
-|-------------|----------|---------------|
-| App Privacy Details | Yes | Disclose data usage |
-| ML model disclosure | Maybe | Research required |
-| Open source licenses | Yes | Include attributions |
-| Export compliance | Maybe | Encryption check |
-| Content guidelines | No | Not generating content |
+| Requirement | Applies? | Action |
+|-------------|----------|--------|
+| App Privacy Details | Yes | Disclose on-device processing, microphone usage |
+| Data collection | Minimal | Audio processed locally, no cloud upload |
+| Open source licenses | Yes | Include attributions for Whisper, Kokoro, UniFFI |
+| Export compliance | Check | ML models may need ECCN review |
 
-**Specific Questions:**
-- [ ] Does Apple require ML model disclosure in App Privacy?
-- [ ] Are there restrictions on bundled ML model sizes?
-- [ ] Do Whisper/Kokoro licenses allow commercial distribution?
-- [ ] Is ECCN classification needed for ML models?
-- [ ] Are there accessibility requirements for STT/TTS apps?
-- [ ] What metadata is needed for App Store listing?
+**Google Play Store Considerations:**
+
+| Requirement | Applies? | Action |
+|-------------|----------|--------|
+| Data Safety form | Yes | Disclose on-device processing |
+| Permissions | Yes | Microphone, storage (for file import) |
+| Target API level | Yes | Must meet current requirements (API 34 as of 2026) |
+| App Bundle | Recommended | Use AAB for smaller downloads |
 
 **License Compliance:**
 
-| Component | License | Commercial OK? | Attribution? |
-|-----------|---------|----------------|--------------|
+| Component | License | Commercial OK? | Attribution Required? |
+|-----------|---------|----------------|----------------------|
 | Whisper | MIT | Yes | Yes |
 | whisper.cpp | MIT | Yes | Yes |
-| Kokoro | Apache 2.0? | TBD | TBD |
+| Kokoro | Apache 2.0 | Yes | Yes |
 | UniFFI | MPL 2.0 | Yes | Yes |
 
 **Research Actions:**
-- [ ] Review Apple's ML/AI app guidelines
-- [ ] Verify all model licenses permit commercial use
-- [ ] Compile attribution notices for open source
-- [ ] Check export compliance (ECCN) requirements
-- [ ] Review similar apps' App Store listings for precedent
-- [ ] Prepare App Privacy details for STT/TTS functionality
+- [ ] Prepare App Privacy details for App Store
+- [ ] Prepare Data Safety form for Play Store
+- [ ] Compile attribution notices
+- [ ] Check export compliance (ECCN) for ML models
+- [ ] Review target API level requirements
 
-### EC-4: Play Store Considerations
-
-**Problem Statement:**
-What Play Store policies affect Lexicon Mobile distribution, particularly around app size and ML functionality?
-
-**Play Store Policies:**
-
-| Policy Area | Relevance | Action |
-|-------------|-----------|--------|
-| App Bundle requirement | High | Must use AAB for >150MB |
-| Asset Delivery | High | For on-demand models |
-| Permissions | Medium | Microphone, storage |
-| Data Safety | High | Disclose on-device processing |
-| Target API level | Medium | Must meet current requirements |
-
-**Specific Questions:**
-- [ ] What's the current target API level requirement?
-- [ ] Can we use Play Feature Delivery for optional models?
-- [ ] What Data Safety disclosures are needed?
-- [ ] Are there specific policies for voice/transcription apps?
-- [ ] How do we handle 32-bit vs 64-bit APK splits?
-
-**Research Actions:**
-- [ ] Review Play Store policies for voice/transcription apps
-- [ ] Set up AAB with asset packs for models
-- [ ] Prepare Data Safety form responses
-- [ ] Test APK splits for architecture-specific builds
-- [ ] Verify target API level compliance
-- [ ] Research Play Store listing best practices
-
-### EC-5: Update and Model Versioning
+### EC-4: Update Strategy
 
 **Problem Statement:**
-How do we handle app updates when models are bundled? How do we version and update models independently?
+How do app updates and model updates interact?
 
 **Update Scenarios:**
 
-| Scenario | Strategy | User Impact |
-|----------|----------|-------------|
-| App update, same models | Normal update | Small download |
-| App update, new models | Full download or delta | Large download |
-| Model-only update | On-demand refresh | Background download |
-| Rollback model | Keep previous version | Storage overhead |
+| Scenario | App Update? | Model Update? | User Action |
+|----------|-------------|---------------|-------------|
+| Bug fix | Yes | No | Standard app update |
+| New feature | Yes | No | Standard app update |
+| Model improvement | No | Yes | Automatic via Lexicon Core |
+| Breaking API change | Yes | Maybe | Coordinated release |
 
-**Specific Questions:**
-- [ ] Can models be updated independently of app binary?
-- [ ] How do we version models for compatibility?
-- [ ] What's the delta update size for model changes?
-- [ ] Should users be able to manage model storage?
-- [ ] How do we handle model corruption or missing files?
+**Key Insight:** Lexicon Core handles model updates independently. The mobile app just needs to:
+1. Update from app stores as normal
+2. Allow Lexicon Core to manage model downloads
 
 **Research Actions:**
-- [ ] Design model versioning scheme
-- [ ] Prototype model update mechanism
-- [ ] Test delta updates with bundled models
-- [ ] Implement model integrity verification
-- [ ] Design storage management UI (if needed)
-- [ ] Document model update strategy
-
-## Related Inquiry Areas
-
-- **Beta distribution:** TestFlight (iOS) and internal testing (Android) size limits?
-- **Enterprise distribution:** Different size constraints for enterprise deployment?
-- **Regional considerations:** Different download behaviors in markets with limited bandwidth?
-- **Competitor analysis:** How do similar apps (Otter, Whisper apps) handle size?
+- [ ] Confirm model update mechanism in Lexicon Core
+- [ ] Design update notification UX if new models available
+- [ ] Test app update with unchanged models
 
 ## Success Criteria
 
-| Criterion | Target | Minimum Viable |
-|-----------|--------|----------------|
-| iOS download size | <200 MB | <300 MB with warning |
-| Android download size | <150 MB base | <200 MB with AAB |
-| First-launch to usable | <30s (with download) | <60s |
-| Model update size | <50 MB delta | Full re-download OK |
-| License compliance | All verified | Critical ones verified |
+| Criterion | Target |
+|-----------|--------|
+| iOS download size | <50 MB (app only) |
+| Android download size | <50 MB (app only) |
+| First-launch to usable | <60s including model download |
+| Store compliance | All requirements met |
 
 ## Findings Log
 
@@ -255,23 +183,19 @@ How do we handle app updates when models are bundled? How do we version and upda
 
 ## Recommendation
 
-**Status:** PENDING RESEARCH
+**Status:** PENDING RESEARCH — App store packaging only
 
 ## References
 
 - [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
-- [iOS App Thinning](https://developer.apple.com/documentation/xcode/reducing-your-app-s-size)
-- [iOS On-Demand Resources](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/On_Demand_Resources_Guide/)
-- [Play Asset Delivery](https://developer.android.com/guide/playcore/asset-delivery)
-- [Android App Bundle](https://developer.android.com/guide/app-bundle)
+- [App Store Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)
 - [Play Store Data Safety](https://support.google.com/googleplay/android-developer/answer/10787469)
-- [Whisper License](https://github.com/openai/whisper/blob/main/LICENSE)
+- [Android App Bundle](https://developer.android.com/guide/app-bundle)
 
 ## Next Agent Actions
 
-1. Start with EC-1 (Binary Size) - build release binary and measure
-2. Determine if size exceeds thresholds and EC-2 is needed
-3. EC-3/EC-4 (Store compliance) can proceed in parallel
-4. Compile license information early to avoid surprises
-5. Design model download UX if on-demand approach is chosen
-6. Update this document with findings as you progress
+1. Build release binaries and measure actual sizes
+2. Review Lexicon Core FFI for download progress API
+3. Design first-launch download UX
+4. Prepare store compliance documentation
+5. Update this document with findings

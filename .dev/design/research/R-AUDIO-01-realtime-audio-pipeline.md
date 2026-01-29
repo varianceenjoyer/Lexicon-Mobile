@@ -5,154 +5,57 @@ status: in-progress
 created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
-category: Real-Time Audio Pipeline
+category: Real-Time Audio Pipeline — Mobile Platform Integration
 priority: medium
-tags: [audio, resampling, buffers, avfoundation, media3, background-audio, interruptions]
+tags: [audio, avfoundation, media3, background-audio, interruptions, audio-focus]
+scope: mobile-specific
 ---
 
-# R-AUDIO-01: Real-Time Audio Pipeline Feasibility
+# R-AUDIO-01: Real-Time Audio Pipeline — Mobile Platform Integration
 
 ## Summary
 
-Research plan for validating real-time audio capture and processing pipeline for Lexicon Mobile. Focus areas: resampling latency from native sample rates to 16kHz, buffer sizing for reliable STT without perceptible lag, and graceful handling of audio interruptions on both platforms.
+Research plan for mobile-specific audio capture and interruption handling. Audio routing and resampling scaffolding is provided by Lexicon Local Server; this research focuses on **iOS/Android platform integration** and **interruption handling**.
 
-## Context
+## Context: What Local Server Provides
 
-Lexicon Mobile captures audio via platform APIs (AVFoundation on iOS, Media3/AAudio on Android), resamples to 16kHz mono for Whisper, and streams chunks to Lexicon Core. Performance requirements:
-- Recording start latency: <100ms (mic tap to capture begin)
-- STT segment latency: <800ms (speech end to text display)
+Per [Lexicon Local Server Roadmap](~/projects/Lexicon-Local-Server/.dev/design/roadmap.md):
 
-The audio pipeline must be robust against system interruptions (phone calls, Siri, other apps) while maintaining these latency targets.
+| Work Package | Status | What It Provides |
+|--------------|--------|------------------|
+| **WP-AUDIO** | 🟡 Scaffolding complete | Mobile audio routes, resampling to 16kHz |
+| **WP-BLE** | 🟡 Awaiting hardware test | Bluetooth HFP 1.6 at 16kHz |
 
-## Engineering Challenges
+**Handled by Local Server:**
+- ~~EC-1: Resampling Latency~~ → WP-AUDIO handles 16kHz conversion
+- ~~EC-2: Buffer Management~~ → WP-AUDIO defines chunk sizes for Whisper
 
-### EC-1: Resampling Latency
+**Mobile's responsibility:** Platform-specific audio session management and interruption handling.
 
-**Problem Statement:**
-What's the latency cost of 44.1/48kHz → 16kHz resampling on the platform audio layer? Does it fit within the 100ms recording start target?
+## Mobile-Specific Engineering Challenge
 
-**Audio Flow:**
-```
-Microphone → Platform API → Native Sample Rate → Resample → 16kHz Mono → FFI → Whisper
-              (44.1/48kHz)                        (??? ms)
-```
-
-**Specific Questions:**
-- [ ] What sample rates do iOS/Android microphones typically provide?
-- [ ] What's the latency of platform-provided resamplers (vDSP, Android Resampler)?
-- [ ] Is real-time resampling feasible, or should we request 16kHz directly?
-- [ ] Can iOS AudioUnit or Android AAudio provide 16kHz natively?
-- [ ] What's the quality tradeoff of different resampling algorithms?
-- [ ] Does resampling add to the 100ms startup budget, or is it per-chunk?
-
-**Platform Resampling Options:**
-
-| Platform | API | Native Resampling | Custom Option |
-|----------|-----|-------------------|---------------|
-| iOS | AVAudioEngine | AVAudioConverter | vDSP, Accelerate |
-| iOS | AudioUnit | AudioConverter | libsamplerate |
-| Android | AAudio | None built-in | Oboe, libsamplerate |
-| Android | AudioRecord | None built-in | Android Resampler |
-
-**Existing Solutions to Investigate:**
-- iOS AVAudioConverter with hardware acceleration
-- Oboe library for Android (Google's audio library)
-- libsamplerate (high-quality, cross-platform)
-- speex_resampler (lightweight, used in WebRTC)
-
-**Research Actions:**
-- [ ] Test if iOS/Android can capture at 16kHz directly (avoid resampling)
-- [ ] Measure AVAudioConverter latency for 48kHz → 16kHz
-- [ ] Measure Oboe/AAudio resampling latency on Android
-- [ ] Compare CPU usage of different resampling approaches
-- [ ] Determine if resampling can run on audio thread without glitches
-- [ ] Document recommended approach per platform
-
-**Latency Budget:**
-```
-Recording Start (100ms total):
-├── Audio session setup: ~20-50ms
-├── Buffer allocation: ~5-10ms
-├── First sample capture: ~10-20ms
-└── Resampling init: ??? ms (must be <20ms)
-```
-
-### EC-2: Buffer Management
+### EC-3: Background Audio and Interruptions (Mobile)
 
 **Problem Statement:**
-How large should audio buffers be to avoid underruns during STT processing spikes without adding perceptible latency?
-
-**Buffer Architecture:**
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Capture    │───▶│   Resample  │───▶│   Chunk     │───▶│   FFI to    │
-│  Buffer     │    │   Buffer    │    │   Buffer    │    │   Whisper   │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-   ~10-20ms           ~10-20ms          ~500-1000ms         Variable
-```
-
-**Specific Questions:**
-- [ ] What's the optimal capture buffer size (samples per callback)?
-- [ ] How much latency does buffering add to the pipeline?
-- [ ] What chunk size does Whisper expect/prefer (500ms? 1s? 2s?)?
-- [ ] How do we handle STT processing spikes (inference takes longer than chunk)?
-- [ ] Should we use a ring buffer or queue for chunk accumulation?
-- [ ] What happens if chunks back up (memory growth, dropping)?
-
-**Buffer Sizing Considerations:**
-
-| Buffer | Too Small | Too Large | Sweet Spot |
-|--------|-----------|-----------|------------|
-| Capture | Glitches, dropouts | Higher latency | 10-20ms (256-512 samples @ 48kHz) |
-| Chunk | Frequent FFI calls | Delayed transcription | 500ms-1s of audio |
-| Queue | Overflow on spike | Memory growth | 2-3 chunks max |
-
-**Existing Solutions to Investigate:**
-- iOS AVAudioEngine tap buffer sizing
-- Android AAudio performance mode (LowLatency vs None)
-- Lock-free ring buffer implementations
-- Whisper streaming chunk recommendations
-
-**Research Actions:**
-- [ ] Determine Whisper's preferred input chunk size
-- [ ] Test capture buffer sizes on low-end devices
-- [ ] Implement ring buffer for chunk accumulation
-- [ ] Simulate STT processing spikes (artificial delay)
-- [ ] Measure end-to-end latency with various buffer configs
-- [ ] Document overflow/backpressure handling strategy
-
-**Backpressure Strategy Options:**
-
-| Strategy | Behavior | Tradeoff |
-|----------|----------|----------|
-| Drop oldest | Discard old audio when queue full | May lose speech |
-| Drop newest | Discard incoming when queue full | Delays catch-up |
-| Block capture | Pause capture until queue drains | May cause glitches |
-| Grow queue | Allow unlimited queue growth | Memory risk |
-| Adaptive chunk | Send larger chunks when behind | Variable latency |
-
-### EC-3: Background Audio and Interruptions
-
-**Problem Statement:**
-How do iOS audio session interruptions and Android audio focus changes affect active recordings? Is graceful pause/resume possible?
+How do iOS audio session interruptions and Android audio focus changes affect active recordings? This is entirely platform-specific behavior that the mobile app must handle.
 
 **Interruption Scenarios:**
 
-| Event | iOS | Android | Expected Behavior |
-|-------|-----|---------|-------------------|
-| Incoming call | AVAudioSession interruption | Audio focus loss | Pause recording |
+| Event | iOS Behavior | Android Behavior | Mobile App Response |
+|-------|--------------|------------------|---------------------|
+| Incoming call | AVAudioSession interruption | Audio focus loss | Pause recording, save state |
 | Siri activation | Interruption | N/A | Pause recording |
-| Other app plays audio | Depends on category | Focus loss (duck/pause) | Continue or pause? |
+| Other app plays audio | Depends on category | Focus loss (duck/pause) | Policy decision needed |
 | Alarm/timer | Interruption | Focus loss | Pause recording |
 | Notification sound | Usually continues | Usually continues | Continue |
 | Headphone disconnect | Route change | Audio device change | Continue (switch to speaker) |
-| App backgrounded | Depends on capability | Depends on service | Continue or stop? |
+| App backgrounded | Depends on capability | Depends on foreground service | Policy decision needed |
 
 **Specific Questions:**
-- [ ] What iOS audio session category should we use (playAndRecord, record)?
+- [ ] What iOS audio session category should we use? (`playAndRecord` vs `record`)
 - [ ] How do we handle `AVAudioSession.interruptionNotification`?
 - [ ] Can we resume recording seamlessly after interruption ends?
-- [ ] What Android audio focus mode (gain, gainTransient) is appropriate?
+- [ ] What Android audio focus mode is appropriate? (`AUDIOFOCUS_GAIN` vs `GAIN_TRANSIENT`)
 - [ ] How do we handle `OnAudioFocusChangeListener` callbacks?
 - [ ] Should the app request background audio capability?
 - [ ] What happens to in-progress transcription during interruption?
@@ -160,24 +63,31 @@ How do iOS audio session interruptions and Android audio focus changes affect ac
 **iOS Audio Session Configuration:**
 
 ```swift
-// Recommended configuration (to be validated)
+// Configuration options to research
 let session = AVAudioSession.sharedInstance()
+
+// Option A: Play and Record (for TTS playback support)
 try session.setCategory(.playAndRecord,
-                        mode: .measurement,  // or .default?
+                        mode: .measurement,
                         options: [.allowBluetooth, .defaultToSpeaker])
-try session.setActive(true)
+
+// Option B: Record only
+try session.setCategory(.record,
+                        mode: .measurement,
+                        options: [.allowBluetooth])
 ```
 
-**Android Audio Focus Request:**
+**Android Audio Focus Configuration:**
 
 ```kotlin
-// Recommended configuration (to be validated)
+// Configuration options to research
 val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
     .setAudioAttributes(audioAttributes)
     .setOnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AUDIOFOCUS_LOSS -> pauseRecording()
             AUDIOFOCUS_LOSS_TRANSIENT -> pauseRecording()
+            AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> continueRecording() // ?
             AUDIOFOCUS_GAIN -> resumeRecording()
         }
     }
@@ -186,45 +96,54 @@ val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
 
 **Research Actions:**
 - [ ] Test iOS audio session categories and their interruption behavior
-- [ ] Implement interruption handling with pause/resume
-- [ ] Test Android audio focus scenarios
-- [ ] Verify recording can resume without data loss
-- [ ] Test background recording on both platforms
-- [ ] Document recommended configuration and edge cases
-- [ ] Design UI feedback for interruption states
+- [ ] Implement `AVAudioSession.interruptionNotification` handler
+- [ ] Test Android audio focus scenarios on real device
+- [ ] Implement `OnAudioFocusChangeListener` with proper state management
+- [ ] Verify recording can resume without data loss after interruption
+- [ ] Test background recording capability on both platforms
+- [ ] Document recommended configuration for each platform
+- [ ] Design UI feedback for interruption states (banner, icon)
 
 **State Machine for Interruptions:**
 
 ```
-[Recording] ──(interruption begin)──▶ [Interrupted]
-     │                                      │
-     │                               (interruption end)
-     │                                      │
-     │                                      ▼
-     │                              [Resuming] ──(resume complete)──▶ [Recording]
-     │                                      │
-     │                               (user cancels)
-     │                                      │
-     ▼                                      ▼
-[Stopped] ◀────────────────────────────[Stopped]
+[Idle] ──(start recording)──▶ [Recording]
+                                  │
+                           (interruption begin)
+                                  │
+                                  ▼
+                            [Interrupted]
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+             (interruption end)           (user cancels)
+                    │                           │
+                    ▼                           ▼
+              [Resuming]                    [Stopped]
+                    │
+             (resume complete)
+                    │
+                    ▼
+              [Recording]
 ```
 
-## Related Inquiry Areas
+**Platform Capability Requirements:**
 
-- **Bluetooth audio:** Do Bluetooth headsets/earbuds affect sample rate or latency?
-- **Audio routing:** How to handle speaker/headphone/Bluetooth switching mid-recording?
-- **Echo cancellation:** Is AEC needed for Note View, or only relevant for calls?
-- **Noise suppression:** Should platform-level noise suppression be enabled or disabled (Whisper handles noise)?
+| Capability | iOS | Android |
+|------------|-----|---------|
+| Background audio | `UIBackgroundModes: audio` | Foreground Service |
+| Bluetooth recording | `allowBluetooth` option | Permission + profile |
+| Interruption handling | NotificationCenter observer | AudioFocusChangeListener |
+| Route change handling | `routeChangeNotification` | AudioDeviceCallback |
 
 ## Success Criteria
 
 | Criterion | Target | Minimum Viable |
 |-----------|--------|----------------|
-| Recording start latency | <100ms | <200ms |
-| Resampling latency | <20ms per chunk | <50ms per chunk |
-| Buffer underruns | 0 in normal use | <1 per minute |
-| Interruption recovery | Seamless resume | Manual resume OK |
+| Interruption recovery | Seamless auto-resume | Manual resume with prompt |
 | Background recording | Supported | Not required for MVP |
+| State preservation | No data loss on interrupt | Partial save OK |
+| UI feedback | Real-time status indicator | Toast notification |
 
 ## Findings Log
 
@@ -234,22 +153,19 @@ val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
 
 ## Recommendation
 
-**Status:** PENDING RESEARCH
+**Status:** PENDING RESEARCH — Mobile platform integration only
 
 ## References
 
-- [AVAudioEngine Documentation](https://developer.apple.com/documentation/avfaudio/avaudioengine)
 - [AVAudioSession Programming Guide](https://developer.apple.com/library/archive/documentation/Audio/Conceptual/AudioSessionProgrammingGuide/)
-- [Android AAudio](https://developer.android.com/ndk/guides/audio/aaudio/aaudio)
-- [Oboe Library](https://github.com/google/oboe) - Google's audio library
-- [Managing Audio Focus](https://developer.android.com/guide/topics/media-apps/audio-focus)
-- [libsamplerate](http://www.mega-nerd.com/SRC/) - High-quality resampling
+- [Managing Audio Focus (Android)](https://developer.android.com/guide/topics/media-apps/audio-focus)
+- [Handling Audio Interruptions (iOS)](https://developer.apple.com/documentation/avfaudio/handling_audio_interruptions)
+- [Foreground Services (Android)](https://developer.android.com/guide/components/foreground-services)
 
 ## Next Agent Actions
 
-1. Start with EC-1 (Resampling) - test if 16kHz capture is natively supported
-2. Build minimal audio capture PoC on iOS and Android
-3. Measure actual latencies for resampling approaches
-4. EC-2 (Buffers) can proceed once basic capture is working
-5. EC-3 (Interruptions) requires testing on physical devices
-6. Update this document with findings as you progress
+1. Set up minimal iOS audio capture with interruption handling
+2. Set up minimal Android audio capture with focus handling
+3. Test interruption scenarios on physical devices
+4. Document recommended configurations
+5. Update this document with findings
