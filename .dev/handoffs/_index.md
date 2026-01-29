@@ -13,10 +13,7 @@ updated: 2026-01-29
 
 | ID | Work Package | From | To | Priority | Status | Blocked By |
 |----|--------------|------|-----|----------|--------|------------|
-| [HO-2026-01-29-wp-setup](HO-2026-01-29-wp-setup-flutter-init.md) | WP-SETUP | design-lead | developer | critical | ready | — |
-| [HO-2026-01-29-wp-audio](HO-2026-01-29-wp-audio-services.md) | WP-AUDIO | design-lead | developer | critical | ready | WP-SETUP |
-| [HO-2026-01-29-wp-state](HO-2026-01-29-wp-state-riverpod.md) | WP-STATE | design-lead | developer | high | ready | WP-SETUP |
-| [HO-2026-01-29-wp-nav](HO-2026-01-29-wp-nav-router.md) | WP-NAV | design-lead | developer | high | ready | WP-SETUP |
+| (none) | All MVP handoffs complete | — | — | — | — | — |
 
 ---
 
@@ -73,6 +70,10 @@ Currently no human-blocked work.
 
 | ID | Work Package | Completed | Notes |
 |----|--------------|-----------|-------|
+| [HO-2026-01-29-wp-setup](HO-2026-01-29-wp-setup-flutter-init.md) | WP-SETUP | 2026-01-29 | Flutter project structure |
+| [HO-2026-01-29-wp-audio](HO-2026-01-29-wp-audio-services.md) | WP-AUDIO | 2026-01-29 | Audio services |
+| [HO-2026-01-29-wp-state](HO-2026-01-29-wp-state-riverpod.md) | WP-STATE | 2026-01-29 | Riverpod providers |
+| [HO-2026-01-29-wp-nav](HO-2026-01-29-wp-nav-router.md) | WP-NAV | 2026-01-29 | Navigation + shell |
 
 ---
 
