@@ -7,7 +7,7 @@ created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
 consumers: [developer]
-depends-on: [WP-SETUP, WP-FFI, WP-STATE, WP-NAV]
+depends-on: [WP-SETUP, WP-STATE, WP-NAV]
 blocks: []
 priority: high
 tags: [files, manager, import, export, search]
@@ -32,7 +32,6 @@ Implement the File Manager View for browsing, previewing, searching, and importi
 - Open file in Note/Chat view
 
 ### Excluded
-- FFI calls to Lexicon Core (provided by WP-FFI)
 - State management logic (provided by WP-STATE)
 - Navigation shell (provided by WP-NAV)
 - Audio capture (not needed in Files view)
@@ -769,7 +768,6 @@ class FilesMenu extends StatelessWidget {
 
 ### Requires
 - WP-SETUP complete (Flutter project)
-- WP-FFI complete (LexiconCoreService for sessions and search)
 - WP-STATE complete (FilesNotifier, ImportNotifier)
 - WP-NAV complete (Navigation shell)
 

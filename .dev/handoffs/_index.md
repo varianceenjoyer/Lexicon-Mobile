@@ -14,7 +14,6 @@ updated: 2026-01-29
 | ID | Work Package | From | To | Priority | Status | Blocked By |
 |----|--------------|------|-----|----------|--------|------------|
 | [HO-2026-01-29-wp-setup](HO-2026-01-29-wp-setup-flutter-init.md) | WP-SETUP | design-lead | developer | critical | ready | — |
-| [HO-2026-01-29-wp-ffi](HO-2026-01-29-wp-ffi-rust-bridge.md) | WP-FFI | design-lead | developer | critical | ready | WP-SETUP |
 | [HO-2026-01-29-wp-audio](HO-2026-01-29-wp-audio-services.md) | WP-AUDIO | design-lead | developer | critical | ready | WP-SETUP |
 | [HO-2026-01-29-wp-state](HO-2026-01-29-wp-state-riverpod.md) | WP-STATE | design-lead | developer | high | ready | WP-SETUP |
 | [HO-2026-01-29-wp-nav](HO-2026-01-29-wp-nav-router.md) | WP-NAV | design-lead | developer | high | ready | WP-SETUP |
@@ -34,7 +33,6 @@ updated: 2026-01-29
 │                                                                         │
 │  PHASE 2: Core Services (After WP-SETUP, can be parallel)              │
 │  ────────────────────────────────────────────────────────              │
-│    • WP-FFI   — flutter_rust_bridge + Lexicon Core                     │
 │    • WP-AUDIO — audio capture + playback services                      │
 │    • WP-STATE — Riverpod providers and notifiers                       │
 │    • WP-NAV   — GoRouter + bottom navigation                           │
@@ -52,14 +50,13 @@ updated: 2026-01-29
 
 | Work Package | Depends On | Blocks |
 |--------------|------------|--------|
-| WP-SETUP | — | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV |
-| WP-FFI | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
+| WP-SETUP | — | WP-AUDIO, WP-STATE, WP-NAV |
 | WP-AUDIO | WP-SETUP | WP-NOTE, WP-CHAT |
 | WP-STATE | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
 | WP-NAV | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
-| WP-NOTE | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | — |
-| WP-CHAT | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | — |
-| WP-FILES | WP-FFI, WP-STATE, WP-NAV | — |
+| WP-NOTE | WP-AUDIO, WP-STATE, WP-NAV | — |
+| WP-CHAT | WP-AUDIO, WP-STATE, WP-NAV | — |
+| WP-FILES | WP-STATE, WP-NAV | — |
 
 ---
 

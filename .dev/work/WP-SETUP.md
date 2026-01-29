@@ -8,7 +8,7 @@ updated: 2026-01-29
 author: design-lead
 consumers: [developer]
 depends-on: []
-blocks: [WP-FFI, WP-AUDIO, WP-STATE, WP-NAV]
+blocks: [WP-AUDIO, WP-STATE, WP-NAV]
 priority: critical
 tags: [flutter, setup, configuration]
 ---
@@ -31,7 +31,6 @@ Initialize the Flutter project with proper structure, dependencies, and platform
 - Development environment verification
 
 ### Excluded
-- flutter_rust_bridge integration (see WP-FFI)
 - Audio plugin configuration (see WP-AUDIO)
 - State management implementation (see WP-STATE)
 - View implementations (see WP-NOTE, WP-CHAT, WP-FILES)
@@ -152,7 +151,6 @@ dev_dependencies:
 - CocoaPods (iOS dependencies)
 
 ### Blocks
-- WP-FFI (needs project structure)
 - WP-AUDIO (needs project structure)
 - WP-STATE (needs project structure)
 - WP-NAV (needs project structure)

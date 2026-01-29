@@ -7,7 +7,7 @@ created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
 consumers: [developer]
-depends-on: [WP-SETUP, WP-FFI, WP-AUDIO, WP-STATE, WP-NAV]
+depends-on: [WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV]
 blocks: []
 priority: high
 tags: [chat, view, diarization, conversation, speakers]
@@ -32,7 +32,6 @@ Implement the Chat View screen for multi-speaker diarized transcription. This vi
 
 ### Excluded
 - Audio capture implementation (provided by WP-AUDIO)
-- FFI calls to Lexicon Core (provided by WP-FFI)
 - State management logic (provided by WP-STATE)
 - Navigation shell (provided by WP-NAV)
 - TTS playback (not supported in Chat View per spec)
@@ -469,7 +468,6 @@ class _SpeakerLabelsDialogState extends State<SpeakerLabelsDialog> {
 
 ### Requires
 - WP-SETUP complete (Flutter project)
-- WP-FFI complete (LexiconCoreService with diarization)
 - WP-AUDIO complete (AudioCaptureService)
 - WP-STATE complete (ChatNotifier)
 - WP-NAV complete (Navigation shell)

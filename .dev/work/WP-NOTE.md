@@ -7,7 +7,7 @@ created: 2026-01-29
 updated: 2026-01-29
 author: design-lead
 consumers: [developer]
-depends-on: [WP-SETUP, WP-FFI, WP-AUDIO, WP-STATE, WP-NAV]
+depends-on: [WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV]
 blocks: []
 priority: high
 tags: [note, view, transcription, tts, recording]
@@ -32,7 +32,6 @@ Implement the Note View screen for single-speaker transcription with TTS playbac
 
 ### Excluded
 - Audio capture implementation (provided by WP-AUDIO)
-- FFI calls to Lexicon Core (provided by WP-FFI)
 - State management logic (provided by WP-STATE)
 - Navigation shell (provided by WP-NAV)
 
@@ -415,7 +414,6 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 ### Requires
 - WP-SETUP complete (Flutter project)
-- WP-FFI complete (LexiconCoreService)
 - WP-AUDIO complete (AudioCaptureService, TTSPlaybackService)
 - WP-STATE complete (NoteNotifier, TTSPlaybackNotifier)
 - WP-NAV complete (Navigation shell)

@@ -22,14 +22,13 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Priority | Phase | Dependencies | Blocks |
 |----|------|----------|-------|--------------|--------|
-| [WP-SETUP](WP-SETUP.md) | Flutter Project Setup | critical | mvp | none | WP-FFI, WP-AUDIO, WP-STATE, WP-NAV |
-| [WP-FFI](WP-FFI.md) | flutter_rust_bridge Integration | critical | mvp | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
+| [WP-SETUP](WP-SETUP.md) | Flutter Project Setup | critical | mvp | none | WP-AUDIO, WP-STATE, WP-NAV |
 | [WP-AUDIO](WP-AUDIO.md) | Audio Capture and Playback | critical | mvp | WP-SETUP | WP-NOTE, WP-CHAT |
 | [WP-STATE](WP-STATE.md) | State Management (Riverpod) | high | mvp | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
 | [WP-NAV](WP-NAV.md) | Navigation and App Shell | high | mvp | WP-SETUP | WP-NOTE, WP-CHAT, WP-FILES |
-| [WP-NOTE](WP-NOTE.md) | Note View Implementation | high | mvp | WP-SETUP, WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | none |
-| [WP-CHAT](WP-CHAT.md) | Chat View Implementation | high | mvp | WP-SETUP, WP-FFI, WP-AUDIO, WP-STATE, WP-NAV | none |
-| [WP-FILES](WP-FILES.md) | File Manager View | high | mvp | WP-SETUP, WP-FFI, WP-STATE, WP-NAV | none |
+| [WP-NOTE](WP-NOTE.md) | Note View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
+| [WP-CHAT](WP-CHAT.md) | Chat View Implementation | high | mvp | WP-SETUP, WP-AUDIO, WP-STATE, WP-NAV | none |
+| [WP-FILES](WP-FILES.md) | File Manager View | high | mvp | WP-SETUP, WP-STATE, WP-NAV | none |
 
 ### In Progress
 
@@ -50,7 +49,6 @@ Work packages are self-contained units of implementation work with:
 | Work Package | Description | Status |
 |--------------|-------------|--------|
 | WP-SETUP | Flutter project initialization | ready |
-| WP-FFI | Lexicon Core FFI integration | ready |
 | WP-AUDIO | Audio capture and playback services | ready |
 | WP-STATE | Riverpod state management | ready |
 | WP-NAV | Navigation and app shell | ready |
@@ -81,7 +79,6 @@ Work packages are self-contained units of implementation work with:
 ### Must Complete for MVP
 
 - WP-SETUP (critical, blocks everything)
-- WP-FFI (critical, core functionality)
 - WP-AUDIO (critical, recording/playback)
 - WP-STATE (high, state management)
 - WP-NAV (high, navigation)
@@ -98,7 +95,6 @@ Phase 1 (Foundation):
   └── WP-SETUP ──────────────────────────────────────────┐
                                                           │
 Phase 2 (Core Services):                                  │
-  ├── WP-FFI ◀────────────────────────────────────────────┤
   ├── WP-AUDIO ◀──────────────────────────────────────────┤
   ├── WP-STATE ◀──────────────────────────────────────────┤
   └── WP-NAV ◀────────────────────────────────────────────┘
@@ -116,7 +112,6 @@ Phase 3 (Views):    │
 | Work Package | Interface Contract | Key Files |
 |--------------|-------------------|-----------|
 | [WP-SETUP](WP-SETUP.md) | Project structure, pubspec.yaml | `lib/main.dart`, `lib/app.dart` |
-| [WP-FFI](WP-FFI.md) | LexiconCoreService API | `lib/services/lexicon_core_service.dart` |
 | [WP-AUDIO](WP-AUDIO.md) | AudioCaptureService, TTSPlaybackService | `lib/services/audio_*.dart` |
 | [WP-STATE](WP-STATE.md) | Riverpod providers and notifiers | `lib/providers/`, `lib/features/*/providers/` |
 | [WP-NAV](WP-NAV.md) | GoRouter configuration | `lib/core/router/app_router.dart` |
@@ -133,29 +128,29 @@ Phase 3 (Views):    │
                            │                      WP-SETUP                            │
                            │             Flutter Project Setup                        │
                            │                    (critical)                            │
-                           └────────────┬────────────┬────────────┬───────────────────┘
-                                        │            │            │
-              ┌─────────────────────────┼────────────┼────────────┼────────────────────┐
-              │                         │            │            │                    │
-              ▼                         ▼            ▼            ▼                    │
-     ┌─────────────────┐      ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┴──┐
-     │    WP-FFI       │      │   WP-AUDIO      │  │   WP-STATE      │  │    WP-NAV        │
-     │  flutter_rust   │      │ Audio Capture   │  │   Riverpod      │  │   GoRouter       │
-     │    bridge       │      │   Playback      │  │   Providers     │  │   Navigation     │
-     │   (critical)    │      │   (critical)    │  │    (high)       │  │     (high)       │
-     └────────┬────────┘      └────────┬────────┘  └────────┬────────┘  └────────┬─────────┘
-              │                        │                    │                    │
-              │                        │                    │                    │
-              └────────────────────────┴────────────────────┴────────────────────┘
-                                                │
-              ┌─────────────────────────────────┼─────────────────────────────────┐
-              │                                 │                                 │
-              ▼                                 ▼                                 ▼
-     ┌─────────────────┐             ┌─────────────────┐             ┌─────────────────┐
-     │   WP-NOTE       │             │   WP-CHAT       │             │   WP-FILES      │
-     │   Note View     │             │   Chat View     │             │  File Manager   │
-     │    (high)       │             │    (high)       │             │    (high)       │
-     └─────────────────┘             └─────────────────┘             └─────────────────┘
+                           └────────────┬────────────────────────┬───────────────────┘
+                                        │                        │
+              ┌─────────────────────────┼────────────────────────┼────────────────────┐
+              │                         │                        │                    │
+              ▼                         ▼                        ▼                    │
+     ┌─────────────────┐      ┌─────────────────┐      ┌──────────────────┐          │
+     │   WP-AUDIO      │      │   WP-STATE      │      │    WP-NAV        │          │
+     │ Audio Capture   │      │   Riverpod      │      │   GoRouter       │          │
+     │   Playback      │      │   Providers     │      │   Navigation     │          │
+     │   (critical)    │      │    (high)       │      │     (high)       │          │
+     └────────┬────────┘      └────────┬────────┘      └────────┬─────────┘          │
+              │                        │                        │                    │
+              │                        │                        │                    │
+              └────────────────────────┴────────────────────────┘                    │
+                                       │                                             │
+              ┌────────────────────────┼─────────────────────────────────┐           │
+              │                        │                                 │           │
+              ▼                        ▼                                 ▼           │
+     ┌─────────────────┐      ┌─────────────────┐             ┌─────────────────┐   │
+     │   WP-NOTE       │      │   WP-CHAT       │             │   WP-FILES      │   │
+     │   Note View     │      │   Chat View     │             │  File Manager   │   │
+     │    (high)       │      │    (high)       │             │    (high)       │   │
+     └─────────────────┘      └─────────────────┘             └─────────────────┘   │
 ```
 
 ---

@@ -101,7 +101,6 @@ After completing WP-SETUP, the following work packages are unblocked:
 
 | Work Package | Priority | Can Start |
 |--------------|----------|-----------|
-| WP-FFI | critical | Yes (after WP-SETUP) |
 | WP-AUDIO | critical | Yes (after WP-SETUP) |
 | WP-STATE | high | Yes (after WP-SETUP) |
 | WP-NAV | high | Yes (after WP-SETUP) |
