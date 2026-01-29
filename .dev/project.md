@@ -11,7 +11,7 @@ Provide a cross-platform mobile client for real-time speech transcription, diari
 
 ## Project Description
 
-Lexicon Mobile is a native mobile application (iOS/Android) that interfaces with Lexicon Local Server's embedded Rust library via FFI. The app provides three primary views for different transcription workflows:
+Lexicon Mobile is a **Flutter-based cross-platform application** (iOS/Android) that interfaces with Lexicon Local Server's embedded Rust library via FFI. The app provides three primary views for different transcription workflows:
 
 1. **Note View** — Single-speaker transcription with TTS playback for review
 2. **Chat View** — Multi-speaker diarized transcription displayed as a conversation
@@ -23,43 +23,47 @@ All speech processing (STT, diarization, TTS) is performed locally on-device via
 
 | Platform | Min Version | Framework | Lexicon Integration |
 |----------|-------------|-----------|---------------------|
-| iOS | iOS 14+ | SwiftUI | Static lib via UniFFI → Swift |
-| Android | API 26+ | Jetpack Compose | Shared lib via UniFFI → Kotlin |
+| iOS | iOS 12+ (Flutter min) | Flutter/Dart | Rust lib via flutter_rust_bridge |
+| Android | API 21+ (Flutter min) | Flutter/Dart | Rust lib via flutter_rust_bridge |
 
-> **Note:** iOS 14+ required for SwiftUI features (LazyVStack, @StateObject, ScrollViewReader). See [R-PLAT-01](design/research/R-PLAT-01-platform-version-constraints.md).
+> **Note:** Flutter supports iOS 12+ and API 21+, but ML performance is optimal on iOS 14+ / API 26+ devices. See [R-FLUTTER-01](design/research/R-FLUTTER-01-cross-platform-viability.md).
 
 ## Implementation Languages
 
 | Component | Language | Rationale |
 |-----------|----------|-----------|
-| iOS UI | Swift (SwiftUI) | Native iOS development, declarative UI |
-| Android UI | Kotlin (Compose) | Native Android development, declarative UI |
+| UI (iOS + Android) | Dart (Flutter) | Single codebase, ~50% less maintenance |
 | Shared Logic | Rust (via Lexicon Core) | Cross-platform STT/TTS/Storage via FFI |
 
 ## Dependencies
 
 ### Core (via Lexicon Local Server)
 - `lexicon-core` — Embedded Rust library providing STT, TTS, and storage
-- `lexicon-ffi` — UniFFI bindings for Swift/Kotlin interop
+- `flutter_rust_bridge` — Dart bindings for Rust FFI with StreamSink support
 
-### iOS-Specific
-- SwiftUI — Declarative UI framework
-- AVFoundation — Audio capture and playback
-- Combine — Reactive data flow
+### Flutter Packages
+- `flutter` — Cross-platform UI framework
+- `record` — Audio capture with streaming
+- `just_audio` — Audio playback
+- `thermal` — Thermal state monitoring
+- `riverpod` — State management
+- `go_router` — Navigation
+- `permission_handler` — Runtime permissions
+- `flutter_foreground_task` — Background recording
 
-### Android-Specific
-- Jetpack Compose — Declarative UI framework
-- Media3 (ExoPlayer) — Audio capture and playback
-- Kotlin Coroutines + Flow — Reactive data flow
+### Platform-Specific (handled by Flutter plugins)
+- iOS: AVFoundation (via `record`/`just_audio` plugins)
+- Android: AudioRecord/ExoPlayer (via `record`/`just_audio` plugins)
+- Both: Permissions, background tasks, thermal state
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         LEXICON MOBILE APP                                  │
+│                    LEXICON MOBILE APP (Flutter/Dart)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────────────┐  │
-│  │  Note View   │  │  Chat View   │  │       File Manager View          │  │
+│  │  NoteScreen  │  │  ChatScreen  │  │     FileManagerScreen            │  │
 │  │              │  │              │  │                                  │  │
 │  │ • Mic input  │  │ • Mic input  │  │ • File list        • Metadata   │  │
 │  │ • Text area  │  │ • Chat UI    │  │ • Preview pane     • Import     │  │
@@ -67,16 +71,16 @@ All speech processing (STT, diarization, TTS) is performed locally on-device via
 │  └──────┬───────┘  └──────┬───────┘  └────────────┬─────────────────────┘  │
 │         │                 │                       │                         │
 │  ┌──────┴─────────────────┴───────────────────────┴──────────────────────┐  │
-│  │                    PLATFORM AUDIO LAYER                               │  │
-│  │           (AVFoundation on iOS / Media3 on Android)                   │  │
+│  │                    FLUTTER PLUGINS LAYER                              │  │
+│  │        (record, just_audio, thermal, permission_handler)              │  │
 │  └───────────────────────────────┬───────────────────────────────────────┘  │
 │                                  │                                          │
 │  ┌───────────────────────────────┴───────────────────────────────────────┐  │
-│  │                      VIEW MODEL / STATE LAYER                         │  │
-│  │              (Combine/SwiftUI State or Kotlin Flow/State)             │  │
+│  │                    STATE MANAGEMENT (Riverpod)                        │  │
+│  │                    (StateNotifier, AsyncNotifier)                     │  │
 │  └───────────────────────────────┬───────────────────────────────────────┘  │
 └──────────────────────────────────┼──────────────────────────────────────────┘
-                                   │ FFI (UniFFI)
+                                   │ FFI (flutter_rust_bridge)
 ┌──────────────────────────────────┴──────────────────────────────────────────┐
 │                         LEXICON CORE LIBRARY                                │
 │                              (Embedded Rust)                                │
@@ -567,24 +571,26 @@ enum ViewType {
 4. **First-Launch:** Show download progress UI while Lexicon Core downloads models
 5. **App Store:** "Data Not Collected" privacy label (all processing on-device)
 
-### Cross-Platform Alternative: Flutter
+### Framework Decision: Flutter (Primary)
 
-A Flutter-based approach was evaluated as an alternative to native iOS/Android development.
+**Decision**: Flutter is the recommended implementation approach.
 
 | Aspect | Finding |
 |--------|---------|
-| **Verdict** | CONDITIONAL GO |
+| **Verdict** | ✅ GO (with prototype validation) |
 | **FFI** | `flutter_rust_bridge` supports StreamSink (equivalent to UniFFI callbacks) |
 | **Performance** | Zero-copy array transfer, SSE codec optimized |
 | **Maturity** | 5.1k GitHub stars, Flutter Favorite designation |
 | **Thermal APIs** | `thermal` package wraps platform APIs (no platform channels needed) |
-| **Condition** | Prototype required to validate audio plugin latency (<100ms) |
+| **Prerequisite** | Validate audio plugin latency (<100ms) via prototype |
 
 See [R-FLUTTER-01](design/research/R-FLUTTER-01-cross-platform-viability.md) for full analysis.
 
-**Trade-off Summary:**
-- Flutter: 1 codebase, 1 UI language (Dart), ~95% native feel
-- Native: 2 codebases, 2 UI languages (Swift/Kotlin), 100% native feel, proven UniFFI path
+**Why Flutter over Native:**
+- 1 codebase vs 2 (~50% less maintenance)
+- 1 UI language (Dart) vs 2 (Swift + Kotlin)
+- ~95% native feel is acceptable trade-off
+- Native remains a fallback if Flutter audio latency is unacceptable
 
 ---
 
@@ -594,3 +600,4 @@ See [R-FLUTTER-01](design/research/R-FLUTTER-01-cross-platform-viability.md) for
 |---------|------|--------|---------|
 | 0.1.0 | 2026-01-27 | — | Initial draft from whiteboard design |
 | 0.2.0 | 2026-01-29 | — | Update iOS minimum to 14+; replace feasibility questions with completed research findings |
+| 0.3.0 | 2026-01-29 | — | Switch to Flutter as primary framework; update architecture and dependencies |

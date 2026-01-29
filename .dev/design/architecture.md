@@ -1,6 +1,6 @@
 # Lexicon Mobile System Architecture
 
-> **Status**: Draft v1.0 | **Last Updated**: 2026-01-29
+> **Status**: Draft v2.0 | **Last Updated**: 2026-01-29
 >
 > This document is the authoritative architectural blueprint for Lexicon Mobile. All implementation decisions should reference this document.
 
@@ -8,9 +8,14 @@
 
 ## Executive Summary
 
-Lexicon Mobile is a native mobile application providing real-time speech transcription, diarized conversation capture, and transcription file management. The application acts as a **thin client** to Lexicon Core (an embedded Rust library), delegating all ML inference, storage, and audio processing to the core library via FFI.
+Lexicon Mobile is a **Flutter-based cross-platform application** providing real-time speech transcription, diarized conversation capture, and transcription file management. The application acts as a **thin client** to Lexicon Core (an embedded Rust library), delegating all ML inference, storage, and audio processing to the core library via FFI.
 
-**Key Architectural Principle**: Mobile code handles UI rendering, platform audio capture, and user interaction. Lexicon Core handles everything else.
+**Key Architectural Decisions**:
+1. **Flutter over Native** — Single Dart codebase for iOS and Android reduces maintenance burden by ~50%
+2. **flutter_rust_bridge for FFI** — Mature library (5.1k stars, Flutter Favorite) with StreamSink for streaming callbacks
+3. **Thin client pattern** — Mobile code handles UI and platform audio; Lexicon Core handles everything else
+
+**Prerequisite**: Validate audio capture latency (<100ms) with prototype before full implementation commitment.
 
 ---
 
@@ -23,22 +28,23 @@ Lexicon Mobile is a native mobile application providing real-time speech transcr
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         UI LAYER (SwiftUI / Compose)                 │   │
-│  │  • View rendering           • Navigation             • Accessibility │   │
+│  │                         UI LAYER (Flutter/Dart)                      │   │
+│  │  • Widget rendering         • Navigation             • Accessibility │   │
 │  │  • State management         • User input             • Animations    │   │
+│  │  • Material 3 theming       • Platform-adaptive UI                   │   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
 │                                      │                                       │
 │  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                      PLATFORM SERVICES LAYER                         │   │
-│  │  • Audio Session (iOS)      • Audio Focus (Android)                  │   │
-│  │  • Permissions              • Background Tasks                       │   │
-│  │  • File Picker              • Notifications                          │   │
+│  │                      PLATFORM PLUGINS LAYER                          │   │
+│  │  • record (audio capture)   • thermal (thermal state)                │   │
+│  │  • permission_handler       • flutter_foreground_task                │   │
+│  │  • file_picker              • just_audio (playback)                  │   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
 │                                      │                                       │
 │  ┌───────────────────────────────────┴─────────────────────────────────┐   │
 │  │                        FFI BRIDGE LAYER                              │   │
-│  │  • UniFFI Swift Bindings (iOS)    • UniFFI Kotlin Bindings (Android) │   │
-│  │  • Callback handling              • Error translation                │   │
+│  │  • flutter_rust_bridge          • StreamSink for callbacks           │   │
+│  │  • Zero-copy array transfer     • Async/await support                │   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
 │                                      │                                       │
 └──────────────────────────────────────┼──────────────────────────────────────┘
@@ -82,31 +88,52 @@ Lexicon Mobile is a native mobile application providing real-time speech transcr
 
 | Platform | Version | Framework | Coverage | Reference |
 |----------|---------|-----------|----------|-----------|
-| iOS | 14.0+ | SwiftUI | ~95% | [R-PLAT-01](research/R-PLAT-01-platform-version-constraints.md) |
-| Android | API 26+ | Jetpack Compose 1.5+ | 94.8% | [R-PLAT-01](research/R-PLAT-01-platform-version-constraints.md) |
+| iOS | 12.0+ | Flutter | ~99% | Flutter minimum |
+| Android | API 21+ | Flutter | ~99% | Flutter minimum |
+| **Effective** | iOS 14+ / API 26+ | Flutter | ~95% | Per device capability for ML |
+
+> **Note**: Flutter supports iOS 12+ and API 21+, but Lexicon Core's ML models may require newer devices for acceptable performance. The app will run on older devices but may show degraded STT latency.
 
 ### Technology Stack
 
-| Layer | iOS | Android | Shared |
-|-------|-----|---------|--------|
-| **UI Framework** | SwiftUI | Jetpack Compose (Material 3) | — |
-| **State Management** | @StateObject, Combine | ViewModel, Kotlin Flow | — |
-| **Audio Capture** | AVAudioEngine | AudioRecord / AAudio | — |
-| **Audio Playback** | AVAudioPlayerNode | ExoPlayer (Media3) | — |
-| **FFI Bindings** | UniFFI → Swift | UniFFI → Kotlin | UniFFI |
-| **Core Library** | liblex.a (static) | liblex.so (shared) | Rust |
-| **Storage** | — | — | SQLite (via Lexicon Core) |
-| **ML Runtime** | — | — | ONNX Runtime (via Lexicon Core) |
+| Layer | Technology | Notes |
+|-------|------------|-------|
+| **UI Framework** | Flutter 3.x + Dart | Single codebase for iOS/Android |
+| **UI Components** | Material 3 | Platform-adaptive theming |
+| **State Management** | Riverpod or flutter_bloc | Reactive state with streams |
+| **Audio Capture** | `record` plugin | Real-time streaming to Rust |
+| **Audio Playback** | `just_audio` | Buffer scheduling, streaming |
+| **Thermal Monitoring** | `thermal` plugin | Wraps platform APIs |
+| **FFI Bindings** | flutter_rust_bridge v2 | StreamSink, zero-copy arrays |
+| **Core Library** | liblex.so / liblex.a | Rust via FFI |
+| **Storage** | — | SQLite (via Lexicon Core) |
+| **ML Runtime** | — | ONNX Runtime (via Lexicon Core) |
 
 ### Key Framework Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| iOS UI | SwiftUI (not UIKit) | Declarative, modern, LazyVStack for chat |
-| Android UI | Compose (not XML Views) | Declarative, modern, Material 3 |
-| Audio Playback | AVAudioEngine / ExoPlayer | Buffer scheduling, streaming support |
-| FFI | UniFFI (not manual C FFI) | Type-safe, generated bindings, async support |
+| Cross-platform | Flutter (not native) | 1 codebase vs 2, ~50% less maintenance |
+| FFI | flutter_rust_bridge (not UniFFI) | Dart bindings, StreamSink for streaming, 5.1k stars |
+| State | Riverpod or bloc | Dart-native reactive patterns |
+| Audio Capture | `record` plugin | Stream API for real-time capture |
+| Audio Playback | `just_audio` | Proven Flutter audio solution |
+| Thermal | `thermal` plugin | No platform channels needed |
 | Storage | Lexicon Core SQLite | Single source of truth, FTS5 search |
+
+### Why Flutter Over Native?
+
+| Factor | Native (SwiftUI + Compose) | Flutter | Winner |
+|--------|---------------------------|---------|--------|
+| **Codebases to maintain** | 2 | 1 | Flutter |
+| **Languages to learn** | Swift + Kotlin + Rust | Dart + Rust | Flutter |
+| **UI consistency** | Manual alignment | Automatic | Flutter |
+| **FFI tool** | UniFFI (proven) | flutter_rust_bridge (mature) | Tie |
+| **Native feel** | 100% | ~95% | Native |
+| **Long-term maintenance** | Higher effort | Lower effort | Flutter |
+| **Hot reload** | Limited | Full | Flutter |
+
+**Decision**: The maintenance burden reduction outweighs the ~5% native feel difference. Flutter is the recommended approach.
 
 ---
 
@@ -164,81 +191,62 @@ Lexicon Mobile is a native mobile application providing real-time speech transcr
 
 ## Layer Architecture
 
-### iOS Architecture
+### Flutter Application Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              iOS APPLICATION                                 │
+│                         FLUTTER APPLICATION                                  │
+│                      (Single Codebase: iOS + Android)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                            VIEWS (SwiftUI)                           │   │
-│  │  NoteView        ChatView        FileManagerView        SettingsView │   │
+│  │                          SCREENS (Flutter Widgets)                   │   │
+│  │  NoteScreen      ChatScreen      FileManagerScreen      SettingsScreen│   │
+│  │  • Material 3 theming           • Platform-adaptive UI               │   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
-│                                      │ @StateObject                         │
+│                                      │ watch() / ref.read()                  │
 │  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                         VIEW MODELS                                  │   │
-│  │  NoteViewModel   ChatViewModel   FileManagerViewModel                │   │
-│  │  • @Published state              • Combine pipelines                 │   │
+│  │                       STATE MANAGEMENT (Riverpod)                    │   │
+│  │  NoteNotifier    ChatNotifier    FileManagerNotifier                 │   │
+│  │  • StateNotifier / AsyncNotifier • Stream subscriptions             │   │
 │  │  • Action handlers               • Error handling                    │   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
 │                                      │                                       │
 │  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                          SERVICES                                    │   │
-│  │  AudioSessionManager    TTSPlaybackManager    LexiconCoreService    │   │
-│  │  • AVAudioSession       • AVAudioEngine       • FFI wrapper         │   │
-│  │  • Interruption handling• Buffer scheduling   • Async callbacks     │   │
+│  │                          SERVICES (Dart)                             │   │
+│  │  AudioCaptureService    TTSPlaybackService    LexiconCoreService    │   │
+│  │  • record plugin        • just_audio          • FFI wrapper         │   │
+│  │  • Stream<Uint8List>    • Buffer scheduling   • StreamSink callbacks│   │
 │  └───────────────────────────────────┬─────────────────────────────────┘   │
 │                                      │                                       │
 │  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                     LEXICON CORE (UniFFI Swift)                      │   │
-│  │  import LexiconCore                                                  │   │
+│  │                     PLATFORM PLUGINS                                 │   │
+│  │  thermal             permission_handler     flutter_foreground_task │   │
+│  │  • Thermal state     • Mic permission       • Background recording  │   │
+│  └───────────────────────────────────┬─────────────────────────────────┘   │
+│                                      │                                       │
+│  ┌───────────────────────────────────┴─────────────────────────────────┐   │
+│  │                     LEXICON CORE (flutter_rust_bridge)               │   │
+│  │  import 'package:lexicon_core/lexicon_core.dart';                   │   │
 │  │  • createSession()  • processAudio()  • synthesizeSpeech()          │   │
+│  │  • StreamSink<Segment> for callbacks  • Zero-copy Float32List       │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Android Architecture
+### Key Flutter Packages
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            ANDROID APPLICATION                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         COMPOSABLES (Jetpack Compose)                │   │
-│  │  NoteScreen      ChatScreen      FileManagerScreen      SettingsScreen│   │
-│  └───────────────────────────────────┬─────────────────────────────────┘   │
-│                                      │ collectAsState()                      │
-│  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                          VIEW MODELS                                 │   │
-│  │  NoteViewModel   ChatViewModel   FileManagerViewModel                │   │
-│  │  • StateFlow     • Coroutines    • Error handling                   │   │
-│  └───────────────────────────────────┬─────────────────────────────────┘   │
-│                                      │                                       │
-│  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                          SERVICES                                    │   │
-│  │  AudioFocusManager    TTSPlaybackManager    LexiconCoreService      │   │
-│  │  • AudioManager       • ExoPlayer           • FFI wrapper           │   │
-│  │  • Focus callbacks    • MediaSession        • Callback bridge       │   │
-│  └───────────────────────────────────┬─────────────────────────────────┘   │
-│                                      │                                       │
-│  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                       FOREGROUND SERVICE                             │   │
-│  │  RecordingService                                                    │   │
-│  │  • FOREGROUND_SERVICE_TYPE_MICROPHONE                               │   │
-│  │  • Persistent notification                                          │   │
-│  └───────────────────────────────────┬─────────────────────────────────┘   │
-│                                      │                                       │
-│  ┌───────────────────────────────────┴─────────────────────────────────┐   │
-│  │                     LEXICON CORE (UniFFI Kotlin)                     │   │
-│  │  import uniffi.lexicon_core.*                                        │   │
-│  │  • createSession()  • processAudio()  • synthesizeSpeech()          │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+| Package | Purpose | Replaces (Native) |
+|---------|---------|-------------------|
+| `flutter_rust_bridge` | Rust FFI with StreamSink | UniFFI Swift/Kotlin |
+| `record` | Audio capture with streaming | AVAudioEngine / AudioRecord |
+| `just_audio` | Audio playback | AVAudioPlayerNode / ExoPlayer |
+| `thermal` | Thermal state monitoring | ProcessInfo / PowerManager |
+| `permission_handler` | Runtime permissions | Platform-specific |
+| `flutter_foreground_task` | Background recording | Foreground Service |
+| `riverpod` | State management | Combine / Flow |
+| `go_router` | Navigation | NavigationStack / NavHost |
 
 ---
 
@@ -431,50 +439,98 @@ Lexicon Mobile is a native mobile application providing real-time speech transcr
 
 ---
 
-## Audio Session Configuration
+## Audio Configuration
 
-### iOS (AVAudioSession)
+### Flutter Audio Capture (`record` plugin)
 
-```swift
-// Recommended configuration from R-AUDIO-01
-try session.setCategory(.playAndRecord,
-                        mode: .measurement,
-                        options: [.allowBluetooth,
-                                 .defaultToSpeaker,
-                                 .allowBluetoothA2DP])
+```dart
+import 'package:record/record.dart';
+
+class AudioCaptureService {
+  final _recorder = AudioRecorder();
+
+  Future<Stream<Uint8List>> startRecording() async {
+    // Check and request permission
+    if (!await _recorder.hasPermission()) {
+      throw PermissionDeniedException();
+    }
+
+    // Start streaming audio at 16kHz mono (Whisper-compatible)
+    final stream = await _recorder.startStream(
+      const RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
+    );
+
+    return stream;
+  }
+
+  Future<void> stopRecording() async {
+    await _recorder.stop();
+  }
+}
 ```
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| Category | `.playAndRecord` | Supports both recording and TTS playback |
-| Mode | `.measurement` | Highest quality capture |
-| Options | `.allowBluetooth` | Bluetooth headset input |
-| Options | `.defaultToSpeaker` | Fallback when no headphones |
-| Background | `UIBackgroundModes: audio` | Background recording support |
+### Flutter Audio Playback (`just_audio`)
 
-### Android (AudioFocus)
+```dart
+import 'package:just_audio/just_audio.dart';
 
-```kotlin
-// Recommended configuration from R-AUDIO-01
-AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-    .setAudioAttributes(audioAttributes)
-    .setAcceptsDelayedFocusGain(true)
-    .setOnAudioFocusChangeListener(focusChangeListener)
-    .build()
+class TTSPlaybackService {
+  final _player = AudioPlayer();
+
+  Future<void> playPCMStream(Stream<Uint8List> audioStream) async {
+    // Create a StreamAudioSource from TTS output
+    final source = StreamAudioSource(audioStream);
+    await _player.setAudioSource(source);
+    await _player.play();
+  }
+
+  Future<void> stop() => _player.stop();
+  Future<void> seek(Duration position) => _player.seek(position);
+}
 ```
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| Focus Type | `AUDIOFOCUS_GAIN` | Full focus for recording |
-| Content Type | `CONTENT_TYPE_SPEECH` | Speech recording optimization |
-| Delayed Gain | `true` | Better system integration |
-| Service | Foreground + `TYPE_MICROPHONE` | Background recording |
+### Background Recording
+
+```dart
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+// Android: Uses foreground service with FOREGROUND_SERVICE_TYPE_MICROPHONE
+// iOS: Uses UIBackgroundModes: audio (configured in Info.plist)
+
+Future<void> startBackgroundRecording() async {
+  await FlutterForegroundTask.startService(
+    notificationTitle: 'Lexicon Recording',
+    notificationText: 'Recording in progress...',
+  );
+}
+```
+
+### Platform Configuration Files
+
+**iOS (Info.plist)**:
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Lexicon uses the microphone to transcribe speech.</string>
+<key>UIBackgroundModes</key>
+<array><string>audio</string></array>
+```
+
+**Android (AndroidManifest.xml)**:
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+```
 
 ---
 
 ## FFI Interface Contract
 
-The mobile app consumes Lexicon Core via UniFFI-generated bindings. Key API surface:
+The mobile app consumes Lexicon Core via `flutter_rust_bridge`-generated bindings. Key API surface:
 
 ### Session Management
 
@@ -617,29 +673,44 @@ Reference: [R-DIST-01](research/R-DIST-01-build-distribution.md)
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
+| Flutter `record` plugin latency >100ms | High | Low | Prototype validation before full implementation; native fallback available |
 | STT latency exceeds 800ms on low-end devices | High | Medium | Lexicon Core tiers models by device capability |
 | iOS background recording rejected by Apple | High | Low | Follow Apple guidelines; justify in review notes |
-| Flutter audio latency unacceptable | Medium | Medium | Prototype validation before Flutter commitment |
-| UniFFI breaking changes | Medium | Low | Pin versions; Local Server maintains bindings |
+| flutter_rust_bridge breaking changes | Medium | Low | Pin versions; v2.x is stable |
 | Model download fails on first launch | High | Low | Retry logic; offline mode with degraded UX |
 | Thermal throttling degrades experience | Medium | Medium | Lexicon Core auto-downgrades model tier |
+| Flutter plugin gaps | Medium | Low | Platform channels for missing APIs; native fallback |
 
 ---
 
-## Cross-Platform Alternative: Flutter
+## Native Fallback Option
 
-Flutter was evaluated as an alternative to native development. See [R-FLUTTER-01](research/R-FLUTTER-01-cross-platform-viability.md).
+If Flutter proves unsuitable (e.g., audio latency unacceptable after prototype validation), native development remains viable. See [R-FLUTTER-01](research/R-FLUTTER-01-cross-platform-viability.md) for comparison.
 
-| Aspect | Native (Current Plan) | Flutter |
-|--------|----------------------|---------|
-| Codebases | 2 (iOS + Android) | 1 |
-| UI Languages | Swift + Kotlin | Dart |
-| FFI Tool | UniFFI (proven) | flutter_rust_bridge (viable) |
-| Native Feel | 100% | ~95% |
-| Streaming Support | UniFFI callbacks | StreamSink |
-| Verdict | **Current plan** | CONDITIONAL GO (prototype needed) |
+| Aspect | Flutter (Primary) | Native (Fallback) |
+|--------|-------------------|-------------------|
+| Codebases | 1 | 2 (iOS + Android) |
+| UI Languages | Dart | Swift + Kotlin |
+| FFI Tool | flutter_rust_bridge | UniFFI (already built) |
+| Native Feel | ~95% | 100% |
+| Maintenance | Lower | Higher |
+| Streaming | StreamSink | Callback traits |
 
-**Decision**: Proceed with native development. Flutter remains a fallback if native maintenance burden becomes unsustainable.
+### When to Fall Back to Native
+
+Consider switching to native if:
+1. **Audio latency prototype fails** — `record` plugin adds >50ms latency
+2. **Critical plugin gap** — Required platform API not available via Flutter plugin
+3. **Performance issues** — UI jank or memory issues on target devices
+
+### Native Architecture (Reference)
+
+If fallback is needed, use:
+- **iOS**: SwiftUI + UniFFI Swift bindings + AVAudioEngine
+- **Android**: Jetpack Compose + UniFFI Kotlin bindings + ExoPlayer
+- **Shared**: Lexicon Core already has UniFFI bindings from Local Server project
+
+The UniFFI bindings from Lexicon Local Server (WP-FFI) would be used directly.
 
 ---
 
