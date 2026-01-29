@@ -242,6 +242,98 @@ Lexicon Mobile is a native mobile application providing real-time speech transcr
 
 ---
 
+## View Architecture
+
+### View Overview
+
+| View | Purpose | Key Components | Lexicon Core APIs |
+|------|---------|----------------|-------------------|
+| **Note View** | Single-speaker transcription | Text area, TTS player, mic control | `startTranscription(diarization: false)`, `synthesizeSpeech()` |
+| **Chat View** | Multi-speaker diarized capture | Chat bubbles, speaker colors | `startTranscription(diarization: true)` |
+| **File Manager** | Browse, search, import files | File list, preview pane, search | `listSessions()`, `searchTranscriptions()`, `importAudioFile()` |
+
+### Note View State Machine
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           NOTE VIEW STATES                                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   [Idle] ──(mic tap)──▶ [Recording] ──(stop tap)──▶ [Processing]          │
+│     ▲                        │                            │                │
+│     │                   (pause tap)                  (TTS ready)           │
+│     │                        ▼                            ▼                │
+│     │                   [Paused] ◀────────────────── [Playback Ready]     │
+│     │                                                      │               │
+│     │                                                 (play tap)           │
+│     │                                                      ▼               │
+│     └──────────────────────────────────────────────── [Playing]           │
+│                                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Chat View Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CHAT VIEW DATA FLOW                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   [Mic] → [Lexicon Core (diarization: true)] → [Segment with speaker_id]   │
+│                                                          │                   │
+│                                                          ▼                   │
+│                                                 ┌─────────────────┐         │
+│                                                 │  speaker_id % 2 │         │
+│                                                 └────────┬────────┘         │
+│                                                          │                   │
+│                                    ┌─────────────────────┼─────────────────┐│
+│                                    │                     │                 ││
+│                                    ▼                     ▼                 ││
+│                            ┌─────────────┐       ┌─────────────┐          ││
+│                            │  Left (0)   │       │  Right (1)  │          ││
+│                            │  Blue bubble│       │ Green bubble│          ││
+│                            └─────────────┘       └─────────────┘          ││
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### File Manager Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      FILE MANAGER OPERATIONS                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────┐                                                        │
+│  │   File List     │◀──── listSessions() ────── [Lexicon Core SQLite]      │
+│  │   (LazyColumn/  │                                                        │
+│  │    LazyVStack)  │                                                        │
+│  └────────┬────────┘                                                        │
+│           │                                                                  │
+│      [Select]                                                                │
+│           │                                                                  │
+│           ▼                                                                  │
+│  ┌─────────────────┐                                                        │
+│  │  Preview Pane   │◀──── getSession() ──────── [Lexicon Core SQLite]      │
+│  │  (metadata +    │                                                        │
+│  │   text preview) │                                                        │
+│  └─────────────────┘                                                        │
+│                                                                              │
+│  ┌─────────────────┐                                                        │
+│  │  Search Bar     │──── searchTranscriptions() ─▶ [FTS5 Full-Text Search] │
+│  └─────────────────┘                                                        │
+│                                                                              │
+│  ┌─────────────────┐     ┌─────────────────────────────────────────────┐   │
+│  │  Import Button  │────▶│  importAudioFile(path, callback) → Progress │   │
+│  └─────────────────┘     │  • Progress callback updates UI              │   │
+│                          │  • Cancel via cancelImport()                 │   │
+│                          └─────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Data Flow Patterns
 
 ### Audio Capture → STT Pipeline
@@ -377,6 +469,97 @@ AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
 | Content Type | `CONTENT_TYPE_SPEECH` | Speech recording optimization |
 | Delayed Gain | `true` | Better system integration |
 | Service | Foreground + `TYPE_MICROPHONE` | Background recording |
+
+---
+
+## FFI Interface Contract
+
+The mobile app consumes Lexicon Core via UniFFI-generated bindings. Key API surface:
+
+### Session Management
+
+```rust
+// Create/manage transcription sessions
+fn create_session(config: SessionConfig) -> Result<SessionId, LexiconError>
+fn get_session(id: SessionId) -> Result<Session, LexiconError>
+fn list_sessions() -> Result<Vec<SessionSummary>, LexiconError>
+fn delete_session(id: SessionId) -> Result<(), LexiconError>
+fn rename_session(id: SessionId, title: String) -> Result<(), LexiconError>
+```
+
+### STT Operations
+
+```rust
+// Real-time transcription with streaming callbacks
+fn start_transcription(
+    session_id: SessionId,
+    config: TranscriptionConfig  // { diarization: bool, language: Option<String> }
+) -> Result<TranscriptionHandle, LexiconError>
+
+fn process_audio(
+    handle: TranscriptionHandle,
+    samples: Vec<f32>  // Raw audio samples
+) -> Result<Vec<Segment>, LexiconError>  // Returns new segments
+
+fn stop_transcription(handle: TranscriptionHandle) -> Result<(), LexiconError>
+fn cancel_transcription(handle: TranscriptionHandle) -> Result<(), LexiconError>
+```
+
+### TTS Operations
+
+```rust
+// Speech synthesis with streaming audio output
+fn synthesize_speech(
+    text: String,
+    voice_id: Option<String>
+) -> Result<AudioStream, LexiconError>  // Streams PCM chunks via callback
+
+fn cancel_synthesis(stream: AudioStream) -> Result<(), LexiconError>
+```
+
+### File Import
+
+```rust
+// Import external audio files with progress reporting
+fn import_audio_file(
+    path: String,
+    config: TranscriptionConfig,
+    callback: ProgressCallback  // Reports progress percentage
+) -> Result<SessionId, LexiconError>
+
+fn cancel_import(session_id: SessionId) -> Result<(), LexiconError>
+```
+
+### Search
+
+```rust
+// Full-text search via FTS5
+fn search_transcriptions(query: String) -> Result<Vec<SearchResult>, LexiconError>
+```
+
+### Data Types
+
+```rust
+struct Segment {
+    id: String,
+    speaker_id: Option<i32>,  // None for non-diarized
+    text: String,
+    start_ms: i64,
+    end_ms: i64,
+    confidence: Option<f32>,
+}
+
+struct SessionConfig {
+    title: Option<String>,
+    view_type: ViewType,  // Note | Chat
+}
+
+struct TranscriptionConfig {
+    diarization: bool,
+    language: Option<String>,
+    translate_to_english: bool,
+}
+```
 
 ---
 
