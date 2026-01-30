@@ -21,7 +21,14 @@
       "mcp__filesystem__read_text_file",
       "mcp__mcp-agent-mail__macro_contact_handshake",
       "Bash(flutter --version:*)",
-      "mcp__filesystem__directory_tree"
+      "mcp__filesystem__directory_tree",
+      "Bash(flutter doctor:*)",
+      "Bash(java:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(export JAVA_HOME=\"/usr/lib/jvm/java-17-openjdk-amd64\":*)",
+      "Bash(export ANDROID_NDK_HOME=\"$HOME/Android/Sdk/ndk/29.0.14206865\")",
+      "Bash(flutter build:*)"
     ]
   }
 }

@@ -18,7 +18,7 @@ dependencies:
   go_router: ^13.0.0
 
   # Audio
-  record: ^5.0.0
+  record: ^6.0.0
   just_audio: ^0.9.36
 
   # Permissions
