@@ -4,6 +4,8 @@
 >
 > Complete build instructions for Lexicon Mobile, including Lexicon Core integration from the sibling Lexicon-Local-Server project.
 
+[NDK_VERSION]=29.0.14206865;
+
 ---
 
 ## Overview
@@ -70,11 +72,11 @@ parent-directory/
    # Add to shell profile (~/.bashrc, ~/.zshrc, or PowerShell profile)
 
    # Flutter (path shown in Android Studio Settings → Flutter)
-   export PATH="$PATH:/path/to/flutter/bin"
+   export PATH="$PATH:$HOME/tools/flutter/bin"
 
    # Android SDK (typically ~/Android/Sdk or %LOCALAPPDATA%\Android\Sdk)
    export ANDROID_HOME="$HOME/Android/Sdk"
-   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/<version>"  # e.g., 29.0.14206865
+   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/[NDK_VERSION]"  # e.g., 29.0.14206865
    export PATH="$PATH:$ANDROID_HOME/platform-tools"
    ```
 
