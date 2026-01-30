@@ -34,6 +34,7 @@ parent-directory/
 | Dart SDK | 3.0+ | Included with Flutter |
 | Rust | 1.85+ | Lexicon Core compilation |
 | Git | Latest | Source control |
+| Java JDK | 17+ | Required for Android/Gradle builds |
 
 ### Install Flutter via Android Studio
 
@@ -114,7 +115,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 # Android NDK (via Android Studio or standalone)
 # Set environment variable:
-export ANDROID_NDK_HOME=/path/to/android-ndk
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
 
 # Android Rust targets
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
@@ -126,12 +127,15 @@ cargo install cargo-ndk
 ### Linux (Android Development)
 
 ```bash
-# Build essentials
+# Build essentials and Java
 sudo apt update
-sudo apt install -y build-essential cmake pkg-config libssl-dev
+sudo apt install -y build-essential cmake pkg-config libssl-dev openjdk-17-jdk
+
+# Set JAVA_HOME (add to ~/.bashrc or ~/.zshrc)
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
 
 # Android NDK
-export ANDROID_NDK_HOME=/path/to/android-ndk
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
 
 # Android Rust targets
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
@@ -139,6 +143,43 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 # cargo-ndk
 cargo install cargo-ndk
 ```
+
+### WSL2 (Windows Subsystem for Linux)
+
+When developing on WSL2 with a Windows-installed Android SDK/NDK:
+
+```bash
+# Build essentials and Java
+sudo apt update
+sudo apt install -y build-essential cmake pkg-config libssl-dev openjdk-17-jdk
+
+# Set JAVA_HOME
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+
+# Point to Windows Android SDK (adjust drive letter as needed)
+export ANDROID_HOME="/mnt/c/Users/<username>/AppData/Local/Android/Sdk"
+# Or if using a custom location:
+export ANDROID_HOME="/mnt/n/.DEV/tools/Android"
+
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
+
+# Android Rust targets
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+# cargo-ndk
+cargo install cargo-ndk
+```
+
+**Important WSL Notes**:
+- The Windows NDK has `windows-x86_64` prebuilt tools, not `linux-x86_64`
+- Native library compilation (Rust) requires a **Linux NDK** installed in WSL
+- However, `libc++_shared.so` can be copied from the Windows NDK since it's a target library
+- For copying `libc++_shared.so` on WSL with Windows NDK:
+
+  ```bash
+  NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib"
+  cp "$NDK_SYSROOT/aarch64-linux-android/libc++_shared.so" android/app/src/main/jniLibs/arm64-v8a/
+  ```
 
 ### Windows (Android Development)
 
@@ -203,7 +244,7 @@ Build the Lexicon FFI library for Android:
 **Windows (Git Bash or WSL)**:
 ```bash
 # Ensure ANDROID_NDK_HOME is set
-export ANDROID_NDK_HOME="N:/.DEV/tools/Android/ndk/29.0.14206865"
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
 ../Lexicon-Local-Server/scripts/android/build-android.sh arm64 --release --stt --tts
 ```
 
@@ -460,7 +501,9 @@ This downloads and extracts ONNX Runtime Android libraries to `~/.onnxruntime-an
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `ANDROID_NDK_HOME` | Android NDK path | `/Users/dev/Android/ndk/29.0.14206865` |
+| `JAVA_HOME` | Java JDK path (required for Gradle) | `/usr/lib/jvm/java-17-openjdk-amd64` |
+| `ANDROID_HOME` | Android SDK path | `~/Android/Sdk` or `/mnt/n/.DEV/tools/Android` |
+| `ANDROID_NDK_HOME` | Android NDK path | `$ANDROID_HOME/ndk/29.0.14206865` |
 | `ANDROID_API_LEVEL` | Target API level | `26` (Android 8.0+) |
 | `LIBCLANG_PATH` | LLVM/Clang path (Windows) | `C:\Program Files\LLVM\bin` |
 | `ONNXRUNTIME_ANDROID_DIR` | ONNX Runtime Android libs | `~/.onnxruntime-android` |
@@ -512,6 +555,59 @@ Or manually initialize:
 # Find and run vcvarsall.bat
 & "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
 ```
+
+### JAVA_HOME is not set
+
+Install OpenJDK and set the environment variable:
+
+```bash
+# Linux/WSL
+sudo apt install -y openjdk-17-jdk
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+
+# Verify
+java -version
+```
+
+### Build failed due to Android v1 embedding
+
+If you see `Build failed due to use of deleted Android v1 embedding`, the Android project files are incomplete or outdated. Regenerate them:
+
+```bash
+# Regenerate Android project files (preserves existing files like AndroidManifest.xml)
+flutter create . --platforms=android --org=com.lexicon
+
+# Then rebuild
+flutter build apk --release
+```
+
+### Package version resolution failures
+
+If `flutter pub get` fails with version conflicts (e.g., `thermal ^0.1.0 doesn't match any versions`):
+
+1. Check the error message for suggested version
+2. Update `pubspec.yaml` with the correct version
+3. Run `flutter pub get` again
+
+Example fix:
+
+```yaml
+# Before (broken)
+thermal: ^0.1.0
+
+# After (working)
+thermal: ^1.1.12
+```
+
+### WSL: NDK toolchain not found (linux-x86_64)
+
+If building Rust libraries fails with `failed to find tool .../prebuilt/linux-x86_64/bin/clang`:
+
+The Windows NDK only has `windows-x86_64` prebuilt tools. Options:
+
+1. **Pre-build on Windows**: Build the Rust libraries using Windows/PowerShell, then copy `.so` files to WSL
+2. **Install Linux NDK in WSL**: Download the Linux NDK separately for WSL
+3. **Use pre-built libraries**: If libraries were previously built, they can be reused
 
 ---
 

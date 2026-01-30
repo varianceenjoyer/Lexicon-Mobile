@@ -28,7 +28,7 @@ dependencies:
   flutter_foreground_task: ^6.0.0
 
   # Thermal Monitoring
-  thermal: ^0.1.0
+  thermal: ^1.1.12
 
   # UI
   cupertino_icons: ^1.0.6
