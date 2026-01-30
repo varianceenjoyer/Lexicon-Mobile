@@ -69,14 +69,14 @@ parent-directory/
 5. **Set Environment Variables**
 
    ```bash
-   # Add to shell profile (~/.bashrc, ~/.zshrc, or PowerShell profile)
+   # Add to shell profile (~/.bashrc or ~/.zshrc)
 
    # Flutter (path shown in Android Studio Settings → Flutter)
    export PATH="$PATH:$HOME/tools/flutter/bin"
 
-   # Android SDK (typically ~/Android/Sdk or %LOCALAPPDATA%\Android\Sdk)
+   # Android SDK (typically ~/Android/Sdk)
    export ANDROID_HOME="$HOME/Android/Sdk"
-   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/[NDK_VERSION]"  # e.g., 29.0.14206865
+   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
    export PATH="$PATH:$ANDROID_HOME/platform-tools"
    ```
 
@@ -91,12 +91,8 @@ parent-directory/
 ### Install Rust
 
 ```bash
-# Linux/macOS
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup update stable
-
-# Windows (PowerShell)
-# Download and run rustup-init.exe from https://rustup.rs
 ```
 
 ---
@@ -210,76 +206,33 @@ cp "$NDK_SYSROOT/aarch64-linux-android/libc++_shared.so" android/app/src/main/jn
 
 **Important WSL Notes**:
 
-- The Windows NDK has `windows-x86_64` prebuilt tools which **cannot** be used for Flutter builds on WSL
+- The Windows NDK has `windows-x86_64` prebuilt tools which **cannot** be used for builds on WSL
 - You **must** download a Linux-native NDK for Flutter's native asset compilation
 - The `sdk.dir` can point to Windows Android SDK for platform tools, but `ndk.dir` must point to the Linux NDK
 - Rust library compilation also requires the Linux NDK if building from source
-
-### Windows (Android Development)
-
-**Option 1: Use the automated script** (recommended)
-
-```powershell
-# From Lexicon-Local-Server directory
-..\Lexicon-Local-Server\scripts\build-windows.ps1
-```
-
-**Option 2: Manual setup**
-
-1. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-   - Select "Desktop development with C++" workload
-   - Ensure Windows 10/11 SDK is selected
-
-2. Install LLVM:
-   ```powershell
-   winget install LLVM.LLVM
-   $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
-   ```
-
-3. Install CMake:
-   ```powershell
-   winget install Kitware.CMake
-   ```
-
-4. Install Android NDK via Android Studio SDK Manager
-   ```powershell
-   $env:ANDROID_NDK_HOME = "C:\Users\<user>\AppData\Local\Android\Sdk\ndk\<version>"
-   ```
-
-5. Install cargo-ndk:
-   ```powershell
-   cargo install cargo-ndk
-   ```
 
 ---
 
 ## Step 1: Build Lexicon Core Libraries
 
-All commands run from `Lexicon-Mobile/` directory.
+Build scripts must be run from within the `Lexicon-Local-Server/` directory.
 
 ### Android Build
-
-../Lexicon-Local-Server/scripts/android/setup-onnx-android.sh
-source ~/.onnxruntime-android/env.sh
-setup_ort_for_android arm64  # or x86_64
-bash scripts/android/build-android.sh arm64 --release --tts
-
 
 Build the Lexicon FFI library for Android:
 
 ```bash
+# Change to Lexicon-Local-Server directory
+cd ../Lexicon-Local-Server
+
 # Build for ARM64 (most modern devices)
-../Lexicon-Local-Server/scripts/android/build-android.sh arm64 --release --stt --tts
+scripts/android/build-android.sh arm64 --release --stt --tts
 
 # Build for x86_64 (emulators)
-../Lexicon-Local-Server/scripts/android/build-android.sh x86_64 --release --stt --tts
-```
+scripts/android/build-android.sh x86_64 --release --stt --tts
 
-**Windows (Git Bash or WSL)**:
-```bash
-# Ensure ANDROID_NDK_HOME is set
-export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
-../Lexicon-Local-Server/scripts/android/build-android.sh arm64 --release --stt --tts
+# Return to Lexicon-Mobile
+cd ../Lexicon-Mobile
 ```
 
 **Output locations**:
@@ -338,11 +291,6 @@ cp "$NDK_SYSROOT/aarch64-linux-android/libc++_shared.so" android/app/src/main/jn
 cp "$NDK_SYSROOT/x86_64-linux-android/libc++_shared.so" android/app/src/main/jniLibs/x86_64/
 ```
 
-**Windows paths** (adjust NDK path as needed):
-```powershell
-$NDK_SYSROOT = "$env:ANDROID_NDK_HOME/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib"
-```
-
 ### iOS
 
 Copy static library and create XCFramework:
@@ -390,7 +338,7 @@ Run from the `crates/lexicon-flutter/` directory in Lexicon-Local-Server:
 cd ../Lexicon-Local-Server/crates/lexicon-flutter
 flutter_rust_bridge_codegen generate
 ```
-nano
+
 This reads the configuration from `flutter_rust_bridge.yaml`:
 
 | Setting | Value |
@@ -480,8 +428,10 @@ flutter build ipa --release
 
 ```bash
 # 1. Build Lexicon Core
-../Lexicon-Local-Server/scripts/android/build-android.sh arm64 --release --stt --tts
-../Lexicon-Local-Server/scripts/android/build-android.sh x86_64 --release --stt --tts
+cd ../Lexicon-Local-Server
+scripts/android/build-android.sh arm64 --release --stt --tts
+scripts/android/build-android.sh x86_64 --release --stt --tts
+cd ../Lexicon-Mobile
 
 # 2. Copy libraries
 mkdir -p android/app/src/main/jniLibs/{arm64-v8a,x86_64}
@@ -524,7 +474,9 @@ flutter run -d ios
 TTS features require ONNX Runtime. Run the setup script before building with `--tts`:
 
 ```bash
-../Lexicon-Local-Server/scripts/android/setup-onnx-android.sh
+cd ../Lexicon-Local-Server
+scripts/android/setup-onnx-android.sh
+cd ../Lexicon-Mobile
 ```
 
 This downloads and extracts ONNX Runtime Android libraries to `~/.onnxruntime-android/`.
@@ -539,7 +491,6 @@ This downloads and extracts ONNX Runtime Android libraries to `~/.onnxruntime-an
 | `ANDROID_HOME` | Android SDK path | `~/Android/Sdk` or `/mnt/n/.DEV/tools/Android` |
 | `ANDROID_NDK_HOME` | Android NDK path | `$ANDROID_HOME/ndk/29.0.14206865` |
 | `ANDROID_API_LEVEL` | Target API level | `26` (Android 8.0+) |
-| `LIBCLANG_PATH` | LLVM/Clang path (Windows) | `C:\Program Files\LLVM\bin` |
 | `ONNXRUNTIME_ANDROID_DIR` | ONNX Runtime Android libs | `~/.onnxruntime-android` |
 
 ---
@@ -576,19 +527,6 @@ export CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cma
 2. Add library to Xcode project manually if needed:
    - Open `ios/Runner.xcworkspace`
    - Add `liblexicon_ffi.a` to Runner target > Build Phases > Link Binary With Libraries
-
-### Windows: `link.exe` not found
-
-Run the build script which initializes VS environment:
-```powershell
-..\Lexicon-Local-Server\scripts\build-windows.ps1
-```
-
-Or manually initialize:
-```powershell
-# Find and run vcvarsall.bat
-& "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-```
 
 ### JAVA_HOME is not set
 
@@ -637,11 +575,7 @@ thermal: ^1.1.12
 
 If building Rust libraries fails with `failed to find tool .../prebuilt/linux-x86_64/bin/clang`:
 
-The Windows NDK only has `windows-x86_64` prebuilt tools. Options:
-
-1. **Pre-build on Windows**: Build the Rust libraries using Windows/PowerShell, then copy `.so` files to WSL
-2. **Install Linux NDK in WSL**: Download the Linux NDK separately for WSL
-3. **Use pre-built libraries**: If libraries were previously built, they can be reused
+The Windows NDK only has `windows-x86_64` prebuilt tools. You must install a Linux NDK in WSL — see the [WSL2 setup section](#wsl2-windows-subsystem-for-linux) above.
 
 ---
 
