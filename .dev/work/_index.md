@@ -1,8 +1,16 @@
 # Work Packages Index
 
-> **Status**: Active | **Last Updated**: 2026-01-29
+> **Status**: Active | **Last Updated**: 2026-01-30
 >
 > This index tracks all actionable work packages for Lexicon Mobile.
+
+---
+
+## Milestones
+
+| Date       | Milestone                                      | Notes                                          |
+|------------|------------------------------------------------|------------------------------------------------|
+| 2026-01-30 | **First x86_64 APK running on virtual device** | MVP build confirmed working in Android emulator |
 
 ---
 
@@ -202,4 +210,4 @@ Related R-XXX documents
 
 ---
 
-*Last updated: 2026-01-29*
+*Last updated: 2026-01-30*
