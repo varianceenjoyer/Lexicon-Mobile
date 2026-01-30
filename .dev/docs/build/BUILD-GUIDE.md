@@ -146,40 +146,72 @@ cargo install cargo-ndk
 
 ### WSL2 (Windows Subsystem for Linux)
 
-When developing on WSL2 with a Windows-installed Android SDK/NDK:
+When developing on WSL2, you need a **Linux-native NDK** for Flutter builds.
+
+#### 1. Install Prerequisites
 
 ```bash
 # Build essentials and Java
 sudo apt update
 sudo apt install -y build-essential cmake pkg-config libssl-dev openjdk-17-jdk
 
-# Set JAVA_HOME
+# Set JAVA_HOME (add to ~/.bashrc or ~/.zshrc)
 export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+```
 
-# Point to Windows Android SDK (adjust drive letter as needed)
-export ANDROID_HOME="/mnt/c/Users/<username>/AppData/Local/Android/Sdk"
-# Or if using a custom location:
+#### 2. Download and Install Linux NDK
+
+Flutter's native asset compilation requires a Linux NDK with `linux-x86_64` prebuilt tools.
+
+```bash
+# Create NDK directory
+mkdir -p ~/Android/Sdk/ndk
+cd ~/Android/Sdk/ndk
+
+# Download Linux NDK r29
+curl -L -o ndk.zip "https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
+
+# Extract and rename to versioned directory
+unzip -q ndk.zip
+mv android-ndk-r29 29.0.14206865
+rm ndk.zip
+
+cd ~/projects/Lexicon-Mobile
+```
+
+#### 3. Configure Environment
+
+```bash
+# Point to Windows Android SDK for platform tools (adjust path as needed)
 export ANDROID_HOME="/mnt/n/.DEV/tools/Android"
 
-export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
+# Point to Linux NDK for compilation
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/29.0.14206865"
+```
 
-# Android Rust targets
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+#### 4. Configure local.properties
 
-# cargo-ndk
-cargo install cargo-ndk
+Add/update the NDK path in `android/local.properties`:
+
+```properties
+sdk.dir=/mnt/n/.DEV/tools/Android/
+ndk.dir=/home/<username>/Android/Sdk/ndk/29.0.14206865
+```
+
+#### 5. Copy Native Libraries
+
+```bash
+# Copy libc++_shared.so from Linux NDK
+NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib"
+cp "$NDK_SYSROOT/aarch64-linux-android/libc++_shared.so" android/app/src/main/jniLibs/arm64-v8a/
 ```
 
 **Important WSL Notes**:
-- The Windows NDK has `windows-x86_64` prebuilt tools, not `linux-x86_64`
-- Native library compilation (Rust) requires a **Linux NDK** installed in WSL
-- However, `libc++_shared.so` can be copied from the Windows NDK since it's a target library
-- For copying `libc++_shared.so` on WSL with Windows NDK:
 
-  ```bash
-  NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib"
-  cp "$NDK_SYSROOT/aarch64-linux-android/libc++_shared.so" android/app/src/main/jniLibs/arm64-v8a/
-  ```
+- The Windows NDK has `windows-x86_64` prebuilt tools which **cannot** be used for Flutter builds on WSL
+- You **must** download a Linux-native NDK for Flutter's native asset compilation
+- The `sdk.dir` can point to Windows Android SDK for platform tools, but `ndk.dir` must point to the Linux NDK
+- Rust library compilation also requires the Linux NDK if building from source
 
 ### Windows (Android Development)
 
