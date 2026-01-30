@@ -27,6 +27,7 @@ class NoteState {
   final bool isEdited;
   final String? errorMessage;
   final TranscriptionHandle? transcriptionHandle;
+  final double audioLevel;
 
   const NoteState({
     this.mode = NoteViewMode.idle,
@@ -37,6 +38,7 @@ class NoteState {
     this.isEdited = false,
     this.errorMessage,
     this.transcriptionHandle,
+    this.audioLevel = 0.0,
   });
 
   NoteState copyWith({
@@ -51,6 +53,7 @@ class NoteState {
     bool clearError = false,
     TranscriptionHandle? transcriptionHandle,
     bool clearHandle = false,
+    double? audioLevel,
   }) {
     return NoteState(
       mode: mode ?? this.mode,
@@ -62,6 +65,7 @@ class NoteState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       transcriptionHandle:
           clearHandle ? null : (transcriptionHandle ?? this.transcriptionHandle),
+      audioLevel: audioLevel ?? this.audioLevel,
     );
   }
 }
@@ -70,6 +74,7 @@ class NoteState {
 class NoteNotifier extends StateNotifier<NoteState> {
   final Ref _ref;
   StreamSubscription<List<double>>? _audioSubscription;
+  StreamSubscription<double>? _audioLevelSubscription;
 
   NoteNotifier(this._ref) : super(const NoteState());
 
@@ -117,6 +122,11 @@ class NoteNotifier extends StateNotifier<NoteState> {
             );
           }
         }
+      });
+
+      // Listen to audio level stream
+      _audioLevelSubscription = audioService.audioLevelStream.listen((level) {
+        state = state.copyWith(audioLevel: level);
       });
 
       state = state.copyWith(
@@ -168,6 +178,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
       await audioService.stop();
       await _audioSubscription?.cancel();
       _audioSubscription = null;
+      await _audioLevelSubscription?.cancel();
+      _audioLevelSubscription = null;
 
       // Stop transcription
       if (state.transcriptionHandle != null) {
@@ -178,6 +190,7 @@ class NoteNotifier extends StateNotifier<NoteState> {
       // For now, just mark as ready
       state = state.copyWith(
         mode: NoteViewMode.playbackReady,
+        audioLevel: 0.0,
         clearHandle: true,
       );
 
@@ -279,6 +292,7 @@ class NoteNotifier extends StateNotifier<NoteState> {
   /// Clear current session.
   void clearSession() {
     _audioSubscription?.cancel();
+    _audioLevelSubscription?.cancel();
     state = const NoteState();
     _ref.read(appStateProvider.notifier).setRecording(false);
   }
@@ -286,6 +300,7 @@ class NoteNotifier extends StateNotifier<NoteState> {
   @override
   void dispose() {
     _audioSubscription?.cancel();
+    _audioLevelSubscription?.cancel();
     super.dispose();
   }
 }
@@ -303,4 +318,9 @@ final noteModeProvider = Provider<NoteViewMode>((ref) {
 /// Provider for note transcription text.
 final noteTextProvider = Provider<String>((ref) {
   return ref.watch(noteProvider).transcriptionText;
+});
+
+/// Provider for audio level (0.0 to 1.0).
+final audioLevelProvider = Provider<double>((ref) {
+  return ref.watch(noteProvider).audioLevel;
 });

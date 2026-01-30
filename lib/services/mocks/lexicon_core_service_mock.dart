@@ -153,18 +153,8 @@ class LexiconCoreServiceMock implements LexiconCoreService {
     TranscriptionHandle handle,
     List<double> samples,
   ) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    // Simulate occasional transcription result
-    if (DateTime.now().millisecond % 3 == 0) {
-      return [
-        Segment(
-          id: _uuid.v4(),
-          text: 'Sample transcribed text...',
-          startMs: DateTime.now().millisecondsSinceEpoch,
-          endMs: DateTime.now().millisecondsSinceEpoch + 1000,
-        ),
-      ];
-    }
+    await Future.delayed(const Duration(milliseconds: 100));
+    // Return empty until real transcription service is integrated
     return [];
   }
 

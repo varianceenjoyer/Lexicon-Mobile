@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/service_providers.dart';
 import '../../../services/tts_playback_service.dart';
 import '../providers/note_provider.dart';
+import '../widgets/audio_level_meter.dart';
 import '../widgets/note_app_bar.dart';
 import '../widgets/recording_controls.dart';
 import '../widgets/transcription_text_area.dart';
@@ -102,6 +103,12 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
               onPause: () => ref.read(noteProvider.notifier).pausePlayback(),
               onSeek: (pos) => ref.read(noteProvider.notifier).seekPlayback(pos),
             ),
+
+          // Audio level meter
+          AudioLevelMeter(
+            level: noteState.audioLevel,
+            isActive: noteState.mode == NoteViewMode.recording,
+          ),
 
           // Recording controls
           RecordingControls(
