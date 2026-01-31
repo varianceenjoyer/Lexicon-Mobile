@@ -233,25 +233,20 @@ class LexiconFlutterService implements LexiconCoreService {
       return [];
     }
 
-    // Debug: log incoming samples
-    _log('processAudio: received ${samples.length} samples');
-
     // Buffer incoming samples
     active.audioBuffer.addAll(samples);
 
-    // Only process when we have enough audio (0.5 seconds at 16kHz)
+    // Only process when we have enough audio
     if (active.audioBuffer.length < _ActiveTranscription.minSamplesForProcessing) {
       return [];
     }
 
     // Prevent concurrent transcription calls - if already processing, just buffer
     if (active.isProcessing) {
-      _log('Already processing, buffering ${active.audioBuffer.length} samples');
       return [];
     }
 
     active.isProcessing = true;
-    _log('Processing ${active.audioBuffer.length} buffered samples');
 
     // Take buffered samples for processing
     final samplesToProcess = List<double>.from(active.audioBuffer);
@@ -277,12 +272,10 @@ class LexiconFlutterService implements LexiconCoreService {
     );
 
     try {
-      _log('Calling processChunk with ${audioBytes.length} bytes...');
       final rustSegments = await _streamingTranscriber!.processChunk(
         chunk: chunk,
         config: config,
       );
-      _log('processChunk returned ${rustSegments.length} segments');
 
       // Advance timestamp (samples at 16kHz)
       final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
@@ -290,7 +283,6 @@ class LexiconFlutterService implements LexiconCoreService {
 
       // Convert to our Segment type
       final segments = rustSegments.map((s) {
-        _log('Segment: "${s.text}" (${s.startMs}-${s.endMs}ms)');
         return Segment(
           id: _uuid.v4(),
           speakerId: s.speakerId,
@@ -302,7 +294,7 @@ class LexiconFlutterService implements LexiconCoreService {
       }).where((s) => s.text.isNotEmpty).toList();
 
       if (segments.isNotEmpty) {
-        _log('Transcribed ${segments.length} segments from ${durationMs}ms audio');
+        _log('Transcribed: "${segments.map((s) => s.text).join(" ")}"');
       }
 
       return segments;
@@ -426,11 +418,11 @@ class _ActiveTranscription {
   int timestampMs;
 
   /// Audio buffer to accumulate samples before processing.
-  /// Whisper needs minimum 100ms, but 3 seconds gives better quality.
+  /// Whisper needs minimum 100ms (1600 samples at 16kHz).
   final List<double> audioBuffer = [];
 
-  /// Minimum samples before processing (0.5 seconds at 16kHz).
-  static const int minSamplesForProcessing = 8000;
+  /// Minimum samples before processing (100ms at 16kHz).
+  static const int minSamplesForProcessing = 1600;
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;
