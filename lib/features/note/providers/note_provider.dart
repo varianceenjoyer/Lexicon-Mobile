@@ -76,9 +76,49 @@ class NoteNotifier extends StateNotifier<NoteState> {
   StreamSubscription<List<double>>? _audioSubscription;
   StreamSubscription<double>? _audioLevelSubscription;
 
+  /// Debounce timer for batching segment updates.
+  /// Reduces UI rebuilds during rapid transcription updates.
+  Timer? _segmentDebounce;
+
+  /// Pending segments to be added on next debounce flush.
+  final List<Segment> _pendingSegments = [];
+
+  /// Debounce duration for segment updates (50ms provides good balance).
+  static const _debounceMs = 50;
+
   NoteNotifier(this._ref) : super(const NoteState());
 
   LexiconCoreService get _lexiconCore => _ref.read(lexiconCoreProvider);
+
+  /// Flush pending segments to state immediately.
+  void _flushPendingSegments() {
+    if (_pendingSegments.isEmpty) return;
+
+    final newText = state.transcriptionText +
+        (state.transcriptionText.isEmpty ? '' : ' ') +
+        _pendingSegments.map((s) => s.text).join(' ');
+
+    state = state.copyWith(
+      transcriptionText: newText,
+      segments: [...state.segments, ..._pendingSegments],
+    );
+
+    _pendingSegments.clear();
+  }
+
+  /// Add segments with debouncing to reduce UI rebuilds.
+  void _addSegmentsDebounced(List<Segment> segments) {
+    _pendingSegments.addAll(segments);
+
+    // Cancel existing timer
+    _segmentDebounce?.cancel();
+
+    // Set new timer to flush pending segments
+    _segmentDebounce = Timer(
+      const Duration(milliseconds: _debounceMs),
+      _flushPendingSegments,
+    );
+  }
 
   /// Start a new recording session.
   Future<void> startRecording() async {
@@ -118,13 +158,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
         if (state.mode == NoteViewMode.recording && samples.isNotEmpty) {
           final segments = await _lexiconCore.processAudio(handle, samples);
           if (segments.isNotEmpty) {
-            final newText = state.transcriptionText +
-                (state.transcriptionText.isEmpty ? '' : ' ') +
-                segments.map((s) => s.text).join(' ');
-            state = state.copyWith(
-              transcriptionText: newText,
-              segments: [...state.segments, ...segments],
-            );
+            // Use debounced update to reduce UI rebuilds
+            _addSegmentsDebounced(segments);
           }
         }
       });
@@ -181,6 +216,10 @@ class NoteNotifier extends StateNotifier<NoteState> {
       _audioSubscription = null;
       await _audioLevelSubscription?.cancel();
       _audioLevelSubscription = null;
+
+      // Flush any pending segments before stopping transcription
+      _segmentDebounce?.cancel();
+      _flushPendingSegments();
 
       // Stop transcription
       if (state.transcriptionHandle != null) {
@@ -294,6 +333,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
   void clearSession() {
     _audioSubscription?.cancel();
     _audioLevelSubscription?.cancel();
+    _segmentDebounce?.cancel();
+    _pendingSegments.clear();
     state = const NoteState();
     _ref.read(appStateProvider.notifier).setRecording(false);
   }
@@ -302,6 +343,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
   void dispose() {
     _audioSubscription?.cancel();
     _audioLevelSubscription?.cancel();
+    _segmentDebounce?.cancel();
+    _pendingSegments.clear();
     super.dispose();
   }
 }

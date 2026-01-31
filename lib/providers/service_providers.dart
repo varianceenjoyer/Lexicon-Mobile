@@ -11,17 +11,29 @@ import 'settings_provider.dart';
 /// Lexicon Core service provider.
 ///
 /// Returns real FFI implementation if initialized, otherwise mock.
-/// Watches settings and updates the service when they change.
+/// Uses ref.listen instead of ref.watch to prevent provider rebuild on settings change.
+/// This is critical for latency - rebuilding the provider would interrupt transcription.
 final lexiconCoreProvider = Provider<LexiconCoreService>((ref) {
-  final settings = ref.watch(settingsProvider);
-
   if (LexiconFlutterService.isInitialized) {
     debugPrint('Using real Lexicon service');
     final service = LexiconFlutterService();
+
+    // Get initial settings
+    final initialSettings = ref.read(settingsProvider);
     service.updateSettings(
-      silenceThreshold: settings.silenceThreshold,
-      chunkSizeMs: settings.chunkSizeMs,
+      silenceThreshold: initialSettings.silenceThreshold,
+      chunkSizeMs: initialSettings.chunkSizeMs,
     );
+
+    // Listen for settings changes without triggering provider rebuild
+    ref.listen<SettingsState>(settingsProvider, (previous, next) {
+      debugPrint('[lexiconCoreProvider] Settings changed, updating service');
+      service.updateSettings(
+        silenceThreshold: next.silenceThreshold,
+        chunkSizeMs: next.chunkSizeMs,
+      );
+    });
+
     return service;
   }
   debugPrint('Using mock Lexicon service');

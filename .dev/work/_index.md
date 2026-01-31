@@ -30,12 +30,12 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Priority | Phase | Dependencies | Blocks |
 |----|------|----------|-------|--------------|--------|
-| [WP-LATENCY-MOBILE](WP-LATENCY-MOBILE.md) | Mobile Client Latency Optimization | critical | beta | WP-NOTE | - |
 
 ### In Progress
 
 | ID | Name | Owner | Started | Notes |
 |----|------|-------|---------|-------|
+| [WP-LATENCY-MOBILE](WP-LATENCY-MOBILE.md) | Mobile Client Latency Optimization | developer | 2026-01-31 | Phases 1-4 partially complete |
 
 ### Completed (MVP)
 

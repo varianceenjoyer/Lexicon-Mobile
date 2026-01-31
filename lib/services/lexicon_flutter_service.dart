@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/utils/audio_ring_buffer.dart';
 import '../src/rust/api.dart';
 import '../src/rust/error.dart';
 import '../src/rust/frb_generated.dart';
@@ -253,20 +254,22 @@ class LexiconFlutterService implements LexiconCoreService {
     TranscriptionHandle handle,
     List<double> samples,
   ) async {
+    final pipelineStart = DateTime.now();
+
     final active = _activeTranscriptions[handle.value];
     if (active == null || _streamingTranscriber == null) {
       // Silently return - this happens during startup before session is ready
       return [];
     }
 
-    // Buffer incoming samples
-    active.audioBuffer.addAll(samples);
+    // Buffer incoming samples using pre-allocated ring buffer
+    active.audioBuffer.write(samples);
 
     // Calculate minimum samples from chunk size (at 16kHz)
     final minSamples = (_chunkSizeMs * 16000) ~/ 1000;
 
     // Only process when we have enough audio
-    if (active.audioBuffer.length < minSamples) {
+    if (active.audioBuffer.available < minSamples) {
       return [];
     }
 
@@ -277,13 +280,18 @@ class LexiconFlutterService implements LexiconCoreService {
 
     active.isProcessing = true;
 
-    // Take buffered samples for processing
-    final samplesToProcess = List<double>.from(active.audioBuffer);
-    active.audioBuffer.clear();
+    // Drain all buffered samples for processing (zero-copy from ring buffer)
+    final samplesToProcess = active.audioBuffer.drain();
+
+    // Track timing for VAD
+    final vadStart = DateTime.now();
 
     // Lightweight VAD: skip silence to avoid Whisper hallucinations
     final rms = _calculateRms(samplesToProcess);
     final isSilent = rms < _silenceThreshold;
+
+    final vadDuration = DateTime.now().difference(vadStart);
+    active.totalVadTime += vadDuration;
 
     if (isSilent) {
       // Still advance timestamp to maintain timing
@@ -298,12 +306,18 @@ class LexiconFlutterService implements LexiconCoreService {
     if (active.wasInSilence) {
       active.speechOnsetTime = DateTime.now();
       active.awaitingFirstTranscription = true;
-      _log('Speech detected after silence (RMS: ${rms.toStringAsFixed(4)})');
+      _log('[LATENCY T0] Speech detected after silence (RMS: ${rms.toStringAsFixed(4)})');
     }
     active.wasInSilence = false;
 
+    // Track timing for sample conversion
+    final conversionStart = DateTime.now();
+
     // Convert Float64 samples to Float32 bytes (f32le PCM)
     final audioBytes = _samplesToF32Bytes(samplesToProcess);
+
+    final conversionDuration = DateTime.now().difference(conversionStart);
+    active.totalConversionTime += conversionDuration;
 
     // Create audio chunk
     final chunk = AudioChunk(
@@ -321,11 +335,19 @@ class LexiconFlutterService implements LexiconCoreService {
       temperature: 0.0,
     );
 
+    // Track timing for FFI call
+    final ffiStart = DateTime.now();
+
     try {
       final rustSegments = await _streamingTranscriber!.processChunk(
         chunk: chunk,
         config: config,
       );
+
+      final ffiDuration = DateTime.now().difference(ffiStart);
+      active.totalFfiTime += ffiDuration;
+      active.totalChunksProcessed++;
+      active.totalSamplesProcessed += samplesToProcess.length;
 
       // Advance timestamp (samples at 16kHz)
       final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
@@ -343,11 +365,14 @@ class LexiconFlutterService implements LexiconCoreService {
         );
       }).where((s) => s.text.isNotEmpty).toList();
 
+      final pipelineDuration = DateTime.now().difference(pipelineStart);
+
       if (segments.isNotEmpty) {
         // Log latency for first transcription after speech onset
         if (active.awaitingFirstTranscription && active.speechOnsetTime != null) {
           final latencyMs = DateTime.now().difference(active.speechOnsetTime!).inMilliseconds;
-          _log('LATENCY: ${latencyMs}ms from speech onset to first transcription');
+          _log('[LATENCY] ${latencyMs}ms from speech onset to first transcription');
+          _log('[LATENCY BREAKDOWN] VAD: ${vadDuration.inMicroseconds / 1000}ms, Conv: ${conversionDuration.inMicroseconds / 1000}ms, FFI: ${ffiDuration.inMilliseconds}ms, Pipeline: ${pipelineDuration.inMilliseconds}ms');
           active.awaitingFirstTranscription = false;
         }
         _log('Transcribed: "${segments.map((s) => s.text).join(" ")}"');
@@ -371,9 +396,13 @@ class LexiconFlutterService implements LexiconCoreService {
   Future<void> stopTranscription(TranscriptionHandle handle) async {
     final active = _activeTranscriptions.remove(handle.value);
     if (active != null) {
+      // Log latency summary for the session
+      active.logLatencySummary();
+
       // Process any remaining buffered audio (minimum 100ms = 1600 samples)
-      if (active.audioBuffer.length >= 1600 && _streamingTranscriber != null) {
-        final audioBytes = _samplesToF32Bytes(active.audioBuffer);
+      if (active.audioBuffer.available >= 1600 && _streamingTranscriber != null) {
+        final remainingSamples = active.audioBuffer.drain();
+        final audioBytes = _samplesToF32Bytes(remainingSamples);
         final chunk = AudioChunk(
           data: audioBytes,
           timestampMs: active.timestampMs,
@@ -388,7 +417,7 @@ class LexiconFlutterService implements LexiconCoreService {
         );
         try {
           await _streamingTranscriber!.processChunk(chunk: chunk, config: config);
-          _log('Processed final ${active.audioBuffer.length} samples');
+          _log('Processed final ${remainingSamples.length} samples');
         } catch (e) {
           _logError('Error processing final audio: $e');
         }
@@ -485,17 +514,10 @@ class _ActiveTranscription {
   final bool diarization;
   int timestampMs;
 
-  /// Audio buffer to accumulate samples before processing.
-  /// Whisper needs minimum 100ms (1600 samples at 16kHz).
-  final List<double> audioBuffer = [];
-
-  /// Minimum samples before processing (100ms at 16kHz).
-  static const int minSamplesForProcessing = 1600;
-
-  /// RMS threshold for voice activity detection.
-  /// Audio below this level is considered silence and skipped.
-  /// Normalized samples range from -1.0 to 1.0, so 0.01 is very quiet.
-  static const double silenceThreshold = 0.01;
+  /// Pre-allocated ring buffer for audio samples.
+  /// Capacity of 32000 samples = 2 seconds at 16kHz.
+  /// Reduces GC pressure compared to regular List.
+  final AudioRingBuffer audioBuffer = AudioRingBuffer(32000);
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;
@@ -509,9 +531,26 @@ class _ActiveTranscription {
   /// Whether we're waiting for the first transcription after speech onset.
   bool awaitingFirstTranscription = false;
 
+  // Latency tracking metrics
+  int totalChunksProcessed = 0;
+  int totalSamplesProcessed = 0;
+  Duration totalFfiTime = Duration.zero;
+  Duration totalVadTime = Duration.zero;
+  Duration totalConversionTime = Duration.zero;
+
   _ActiveTranscription({
     required this.sessionId,
     required this.diarization,
     this.timestampMs = 0,
   });
+
+  /// Log latency summary statistics
+  void logLatencySummary() {
+    if (totalChunksProcessed == 0) return;
+    final avgFfiMs = totalFfiTime.inMicroseconds / totalChunksProcessed / 1000;
+    final avgVadMs = totalVadTime.inMicroseconds / totalChunksProcessed / 1000;
+    final avgConvMs = totalConversionTime.inMicroseconds / totalChunksProcessed / 1000;
+    debugPrint('[LATENCY SUMMARY] Chunks: $totalChunksProcessed, Samples: $totalSamplesProcessed');
+    debugPrint('[LATENCY SUMMARY] Avg FFI: ${avgFfiMs.toStringAsFixed(2)}ms, Avg VAD: ${avgVadMs.toStringAsFixed(2)}ms, Avg Conv: ${avgConvMs.toStringAsFixed(2)}ms');
+  }
 }
