@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../core/utils/audio_ring_buffer.dart';
 import '../src/rust/api.dart';
 import '../src/rust/error.dart';
 import '../src/rust/frb_generated.dart';
@@ -262,14 +261,19 @@ class LexiconFlutterService implements LexiconCoreService {
       return [];
     }
 
-    // Buffer incoming samples using pre-allocated ring buffer
-    active.audioBuffer.write(samples);
+    // Buffer incoming samples
+    active.audioBuffer.addAll(samples);
+
+    // Warn if buffer is getting large (indicates slow processing)
+    if (active.audioBuffer.length > _ActiveTranscription.bufferWarningThreshold) {
+      _log('WARNING: Audio buffer at ${active.audioBuffer.length} samples (${active.audioBuffer.length * 1000 ~/ 16000}ms)');
+    }
 
     // Calculate minimum samples from chunk size (at 16kHz)
     final minSamples = (_chunkSizeMs * 16000) ~/ 1000;
 
     // Only process when we have enough audio
-    if (active.audioBuffer.available < minSamples) {
+    if (active.audioBuffer.length < minSamples) {
       return [];
     }
 
@@ -280,8 +284,9 @@ class LexiconFlutterService implements LexiconCoreService {
 
     active.isProcessing = true;
 
-    // Drain all buffered samples for processing (zero-copy from ring buffer)
-    final samplesToProcess = active.audioBuffer.drain();
+    // Take all buffered samples for processing
+    final samplesToProcess = List<double>.from(active.audioBuffer);
+    active.audioBuffer.clear();
 
     // Track timing for VAD
     final vadStart = DateTime.now();
@@ -400,9 +405,8 @@ class LexiconFlutterService implements LexiconCoreService {
       active.logLatencySummary();
 
       // Process any remaining buffered audio (minimum 100ms = 1600 samples)
-      if (active.audioBuffer.available >= 1600 && _streamingTranscriber != null) {
-        final remainingSamples = active.audioBuffer.drain();
-        final audioBytes = _samplesToF32Bytes(remainingSamples);
+      if (active.audioBuffer.length >= 1600 && _streamingTranscriber != null) {
+        final audioBytes = _samplesToF32Bytes(active.audioBuffer);
         final chunk = AudioChunk(
           data: audioBytes,
           timestampMs: active.timestampMs,
@@ -417,7 +421,7 @@ class LexiconFlutterService implements LexiconCoreService {
         );
         try {
           await _streamingTranscriber!.processChunk(chunk: chunk, config: config);
-          _log('Processed final ${remainingSamples.length} samples');
+          _log('Processed final ${active.audioBuffer.length} samples');
         } catch (e) {
           _logError('Error processing final audio: $e');
         }
@@ -514,10 +518,14 @@ class _ActiveTranscription {
   final bool diarization;
   int timestampMs;
 
-  /// Pre-allocated ring buffer for audio samples.
-  /// Capacity of 32000 samples = 2 seconds at 16kHz.
-  /// Reduces GC pressure compared to regular List.
-  final AudioRingBuffer audioBuffer = AudioRingBuffer(32000);
+  /// Growable audio buffer for samples.
+  /// Uses List instead of ring buffer to avoid audio loss when
+  /// Whisper processing takes longer than buffer capacity.
+  /// On emulator, Whisper can take 12+ seconds per chunk.
+  final List<double> audioBuffer = [];
+
+  /// Warning threshold for buffer size (30 seconds of audio).
+  static const int bufferWarningThreshold = 480000;
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;
