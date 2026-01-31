@@ -25,6 +25,17 @@ class LexiconFlutterService implements LexiconCoreService {
   static String? _dataDir;
   static String? _modelDir;
 
+  // Singleton instance
+  static LexiconFlutterService? _instance;
+
+  /// Get the singleton instance of the service.
+  factory LexiconFlutterService() {
+    _instance ??= LexiconFlutterService._internal();
+    return _instance!;
+  }
+
+  LexiconFlutterService._internal();
+
   final _uuid = const Uuid();
 
   // Streaming transcriber for real-time transcription
@@ -244,7 +255,7 @@ class LexiconFlutterService implements LexiconCoreService {
   ) async {
     final active = _activeTranscriptions[handle.value];
     if (active == null || _streamingTranscriber == null) {
-      _log('processAudio: no active transcription or transcriber null');
+      // Silently return - this happens during startup before session is ready
       return [];
     }
 
@@ -272,13 +283,24 @@ class LexiconFlutterService implements LexiconCoreService {
 
     // Lightweight VAD: skip silence to avoid Whisper hallucinations
     final rms = _calculateRms(samplesToProcess);
-    if (rms < _silenceThreshold) {
+    final isSilent = rms < _silenceThreshold;
+
+    if (isSilent) {
       // Still advance timestamp to maintain timing
       final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
       active.timestampMs += durationMs;
       active.isProcessing = false;
+      active.wasInSilence = true;
       return [];
     }
+
+    // Detect silence-to-speech transition for latency tracking
+    if (active.wasInSilence) {
+      active.speechOnsetTime = DateTime.now();
+      active.awaitingFirstTranscription = true;
+      _log('Speech detected after silence (RMS: ${rms.toStringAsFixed(4)})');
+    }
+    active.wasInSilence = false;
 
     // Convert Float64 samples to Float32 bytes (f32le PCM)
     final audioBytes = _samplesToF32Bytes(samplesToProcess);
@@ -322,6 +344,12 @@ class LexiconFlutterService implements LexiconCoreService {
       }).where((s) => s.text.isNotEmpty).toList();
 
       if (segments.isNotEmpty) {
+        // Log latency for first transcription after speech onset
+        if (active.awaitingFirstTranscription && active.speechOnsetTime != null) {
+          final latencyMs = DateTime.now().difference(active.speechOnsetTime!).inMilliseconds;
+          _log('LATENCY: ${latencyMs}ms from speech onset to first transcription');
+          active.awaitingFirstTranscription = false;
+        }
         _log('Transcribed: "${segments.map((s) => s.text).join(" ")}"');
       }
 
@@ -471,6 +499,15 @@ class _ActiveTranscription {
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;
+
+  /// Tracks whether we were in silence on the previous chunk.
+  bool wasInSilence = true;
+
+  /// Timestamp (wall clock) when speech was first detected after silence.
+  DateTime? speechOnsetTime;
+
+  /// Whether we're waiting for the first transcription after speech onset.
+  bool awaitingFirstTranscription = false;
 
   _ActiveTranscription({
     required this.sessionId,
