@@ -289,6 +289,11 @@ class LexiconCoreServiceMock implements LexiconCoreService {
     return results;
   }
 
+  @override
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs}) {
+    // Mock doesn't need to do anything with settings
+  }
+
   Future<void> _simulateDelay() async {
     await Future.delayed(const Duration(milliseconds: 100));
   }

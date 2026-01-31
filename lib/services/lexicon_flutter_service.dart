@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' show sqrt;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +36,20 @@ class LexiconFlutterService implements LexiconCoreService {
 
   // Active transcription state
   final Map<String, _ActiveTranscription> _activeTranscriptions = {};
+
+  // Configurable settings (updated via updateSettings)
+  double _silenceThreshold = 0.01;
+  int _chunkSizeMs = 100;
+
+  @override
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs}) {
+    if (silenceThreshold != null) {
+      _silenceThreshold = silenceThreshold.clamp(0.0, 0.1);
+    }
+    if (chunkSizeMs != null) {
+      _chunkSizeMs = chunkSizeMs.clamp(100, 1000);
+    }
+  }
 
   /// Initialize the Lexicon library. Call once at app startup.
   static Future<void> initialize() async {
@@ -236,8 +251,11 @@ class LexiconFlutterService implements LexiconCoreService {
     // Buffer incoming samples
     active.audioBuffer.addAll(samples);
 
+    // Calculate minimum samples from chunk size (at 16kHz)
+    final minSamples = (_chunkSizeMs * 16000) ~/ 1000;
+
     // Only process when we have enough audio
-    if (active.audioBuffer.length < _ActiveTranscription.minSamplesForProcessing) {
+    if (active.audioBuffer.length < minSamples) {
       return [];
     }
 
@@ -251,6 +269,16 @@ class LexiconFlutterService implements LexiconCoreService {
     // Take buffered samples for processing
     final samplesToProcess = List<double>.from(active.audioBuffer);
     active.audioBuffer.clear();
+
+    // Lightweight VAD: skip silence to avoid Whisper hallucinations
+    final rms = _calculateRms(samplesToProcess);
+    if (rms < _silenceThreshold) {
+      // Still advance timestamp to maintain timing
+      final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
+      active.timestampMs += durationMs;
+      active.isProcessing = false;
+      return [];
+    }
 
     // Convert Float64 samples to Float32 bytes (f32le PCM)
     final audioBytes = _samplesToF32Bytes(samplesToProcess);
@@ -400,6 +428,18 @@ class LexiconFlutterService implements LexiconCoreService {
     return floats.buffer.asUint8List();
   }
 
+  /// Calculate RMS (root mean square) energy of audio samples.
+  /// This is a lightweight voice activity detection method.
+  /// Returns a value between 0.0 (silence) and 1.0 (max amplitude).
+  double _calculateRms(List<double> samples) {
+    if (samples.isEmpty) return 0.0;
+    var sumSquares = 0.0;
+    for (final sample in samples) {
+      sumSquares += sample * sample;
+    }
+    return sqrt(sumSquares / samples.length);
+  }
+
   /// Log info message.
   void _log(String message) {
     debugPrint('[LexiconFlutterService] $message');
@@ -423,6 +463,11 @@ class _ActiveTranscription {
 
   /// Minimum samples before processing (100ms at 16kHz).
   static const int minSamplesForProcessing = 1600;
+
+  /// RMS threshold for voice activity detection.
+  /// Audio below this level is considered silence and skipped.
+  /// Normalized samples range from -1.0 to 1.0, so 0.01 is very quiet.
+  static const double silenceThreshold = 0.01;
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;

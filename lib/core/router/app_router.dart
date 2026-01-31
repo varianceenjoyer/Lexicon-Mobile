@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/chat/screens/chat_screen.dart';
 import '../../features/files/screens/files_screen.dart';
 import '../../features/note/screens/note_screen.dart';
+import '../../features/settings/screens/settings_screen.dart';
 import '../../shared/widgets/app_shell.dart';
 import 'routes.dart';
 
@@ -76,20 +77,3 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
-
-/// Placeholder settings screen - will be implemented later
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: const Center(
-        child: Text('Settings coming soon'),
-      ),
-    );
-  }
-}

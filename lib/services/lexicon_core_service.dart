@@ -54,6 +54,9 @@ abstract class LexiconCoreService {
 
   /// Search transcriptions using full-text search.
   Future<List<SearchResult>> searchTranscriptions(String query);
+
+  /// Update audio processing settings.
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs});
 }
 
 /// Session identifier
