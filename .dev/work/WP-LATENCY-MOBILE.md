@@ -202,10 +202,12 @@ void _onSegmentsReceived(List<Segment> segments) {
    - Changed `ref.watch` to `ref.listen` + `ref.read` pattern
    - Reduce buffer size experiment (#1) - configurable via settings
 
-3. **Phase 3 - Architecture** ✅ COMPLETE
+3. **Phase 3 - Architecture** ✅ REVISED
    - Isolate-based processing (#3) - deferred (FFI already async)
-   - [x] Pre-allocated buffers (#4)
-   - Created `AudioRingBuffer` class with 2-second capacity
+   - [x] Pre-allocated buffers (#4) - **REVERTED**: Ring buffer caused audio dropout
+   - Created `AudioRingBuffer` class but reverted to growable List
+   - Ring buffer overwrites when processing > buffer capacity (12s >> 2s on emulator)
+   - Growable buffer trades memory for correctness until Whisper speeds up
 
 4. **Phase 4 - Polish** ✅ PARTIAL
    - FFI batching (#5) - deferred (ring buffer handles accumulation)
@@ -224,13 +226,28 @@ void _onSegmentsReceived(List<Segment> segments) {
 
 ## Metrics to Track
 
-| Metric | Current | Target |
+| Metric | Current (Emulator) | Target |
 |--------|---------|--------|
-| Speech onset to first text | 10+ sec | < 2 sec |
-| FFI call duration | ? | < 50ms |
+| Speech onset to first text | 11-12 sec | < 2 sec (emulator), < 1 sec (device) |
+| FFI call duration | **11,753-12,439ms** | < 50ms |
+| VAD processing | 0.02-0.08ms ✅ | negligible |
+| Audio conversion | 0.04-0.05ms ✅ | negligible |
 | Audio buffer delay | 100ms | 50-100ms adaptive |
-| UI update latency | ? | < 16ms |
+| UI update latency | ~4-10ms (EGL stats) ✅ | < 16ms |
 | Memory per minute recording | ? | < 10MB |
+
+### Measurement Findings (2026-01-31)
+
+**Bottleneck identified**: 99.99% of latency is in FFI/Whisper inference, not Dart-side processing.
+
+```
+[LATENCY BREAKDOWN] VAD: 0.08ms, Conv: 0.045ms, FFI: 11753ms, Pipeline: 11754ms
+```
+
+The Dart-side optimizations (ring buffer, debouncing, provider fix) are complete and working.
+The remaining latency improvement requires:
+1. Testing on physical device (expected significant improvement)
+2. Whisper model optimization (out of scope - see WP-LATENCY-STT in Lexicon-Local-Server)
 
 ## Research References
 
