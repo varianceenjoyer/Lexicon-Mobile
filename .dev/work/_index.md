@@ -1,6 +1,6 @@
 # Work Packages Index
 
-> **Status**: Active | **Last Updated**: 2026-01-30
+> **Status**: Active | **Last Updated**: 2026-01-31
 >
 > This index tracks all actionable work packages for Lexicon Mobile.
 
@@ -30,7 +30,7 @@ Work packages are self-contained units of implementation work with:
 
 | ID | Name | Priority | Phase | Dependencies | Blocks |
 |----|------|----------|-------|--------------|--------|
-| (none) | All MVP work packages complete | - | - | - | - |
+| [WP-LATENCY-MOBILE](WP-LATENCY-MOBILE.md) | Mobile Client Latency Optimization | critical | beta | WP-NOTE | - |
 
 ### In Progress
 
@@ -69,9 +69,10 @@ Work packages are self-contained units of implementation work with:
 
 | Work Package | Description | Status |
 |--------------|-------------|--------|
+| [WP-LATENCY-MOBILE](WP-LATENCY-MOBILE.md) | Latency optimization (<2s speech-to-text) | ready |
 | (TBD) | Background recording enhancements | planned |
 | (TBD) | Export functionality (TXT, VTT, JSON) | planned |
-| (TBD) | Settings screen | planned |
+| WP-SETTINGS | Settings screen | complete (2026-01-31) |
 
 ### Release Phase
 
