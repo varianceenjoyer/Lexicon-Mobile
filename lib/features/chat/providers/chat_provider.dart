@@ -92,9 +92,44 @@ class ChatNotifier extends StateNotifier<ChatState> {
   StreamSubscription<List<double>>? _audioSubscription;
   StreamSubscription<double>? _audioLevelSubscription;
 
+  /// Debounce timer for batching message updates.
+  /// Reduces UI rebuilds during rapid transcription updates.
+  Timer? _messageDebounce;
+
+  /// Pending messages to be added on next debounce flush.
+  final List<ChatMessage> _pendingMessages = [];
+
+  /// Debounce duration for message updates (50ms provides good balance).
+  static const _debounceMs = 50;
+
   ChatNotifier(this._ref) : super(const ChatState());
 
   LexiconCoreService get _lexiconCore => _ref.read(lexiconCoreProvider);
+
+  /// Flush pending messages to state immediately.
+  void _flushPendingMessages() {
+    if (_pendingMessages.isEmpty) return;
+
+    state = state.copyWith(
+      messages: [...state.messages, ..._pendingMessages],
+    );
+
+    _pendingMessages.clear();
+  }
+
+  /// Add messages with debouncing to reduce UI rebuilds.
+  void _addMessagesDebounced(List<ChatMessage> messages) {
+    _pendingMessages.addAll(messages);
+
+    // Cancel existing timer
+    _messageDebounce?.cancel();
+
+    // Set new timer to flush pending messages
+    _messageDebounce = Timer(
+      const Duration(milliseconds: _debounceMs),
+      _flushPendingMessages,
+    );
+  }
 
   /// Start a new chat recording session.
   Future<void> startRecording() async {
@@ -136,9 +171,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
           if (segments.isNotEmpty) {
             final newMessages =
                 segments.map((s) => ChatMessage.fromSegment(s)).toList();
-            state = state.copyWith(
-              messages: [...state.messages, ...newMessages],
-            );
+            // Use debounced update to reduce UI rebuilds
+            _addMessagesDebounced(newMessages);
           }
         }
       });
@@ -193,6 +227,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _audioSubscription = null;
       await _audioLevelSubscription?.cancel();
       _audioLevelSubscription = null;
+
+      // Flush any pending messages before stopping transcription
+      _messageDebounce?.cancel();
+      _flushPendingMessages();
 
       // Stop transcription
       if (state.transcriptionHandle != null) {
@@ -251,6 +289,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void clearSession() {
     _audioSubscription?.cancel();
     _audioLevelSubscription?.cancel();
+    _messageDebounce?.cancel();
+    _pendingMessages.clear();
     state = const ChatState();
     _ref.read(appStateProvider.notifier).setRecording(false);
   }
@@ -259,6 +299,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void dispose() {
     _audioSubscription?.cancel();
     _audioLevelSubscription?.cancel();
+    _messageDebounce?.cancel();
+    _pendingMessages.clear();
     super.dispose();
   }
 }
