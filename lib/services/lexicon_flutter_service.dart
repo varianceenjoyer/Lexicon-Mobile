@@ -13,7 +13,7 @@ import '../src/rust/types.dart' as rust;
 import 'lexicon_core_service.dart';
 
 /// Default model filename.
-const String kDefaultModelName = 'ggml-base-q5_1.bin';
+const String kDefaultModelName = 'ggml-tiny-q5_1.bin';
 
 /// Asset path for the bundled model.
 const String kModelAssetPath = 'assets/models/$kDefaultModelName';
