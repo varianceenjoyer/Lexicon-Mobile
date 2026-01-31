@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../note/providers/note_provider.dart';
+import '../../note/widgets/audio_level_meter.dart';
 import '../../note/widgets/recording_controls.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/chat_app_bar.dart';
@@ -75,9 +76,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
 
-          // Recording status indicator
-          if (chatState.mode == ChatViewMode.recording)
-            _RecordingIndicator(),
+          // Audio level meter
+          AudioLevelMeter(
+            level: chatState.audioLevel,
+            isActive: chatState.mode == ChatViewMode.recording,
+          ),
 
           // Recording controls
           RecordingControls(
@@ -121,36 +124,5 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case ChatViewMode.error:
         return NoteViewMode.error;
     }
-  }
-}
-
-class _RecordingIndicator extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: theme.colorScheme.error,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Recording...',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

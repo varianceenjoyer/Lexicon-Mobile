@@ -49,6 +49,7 @@ class ChatState {
   final String title;
   final String? errorMessage;
   final TranscriptionHandle? transcriptionHandle;
+  final double audioLevel;
 
   const ChatState({
     this.mode = ChatViewMode.idle,
@@ -57,6 +58,7 @@ class ChatState {
     this.title = 'Untitled Chat',
     this.errorMessage,
     this.transcriptionHandle,
+    this.audioLevel = 0.0,
   });
 
   ChatState copyWith({
@@ -69,6 +71,7 @@ class ChatState {
     bool clearError = false,
     TranscriptionHandle? transcriptionHandle,
     bool clearHandle = false,
+    double? audioLevel,
   }) {
     return ChatState(
       mode: mode ?? this.mode,
@@ -78,6 +81,7 @@ class ChatState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       transcriptionHandle:
           clearHandle ? null : (transcriptionHandle ?? this.transcriptionHandle),
+      audioLevel: audioLevel ?? this.audioLevel,
     );
   }
 }
@@ -86,6 +90,7 @@ class ChatState {
 class ChatNotifier extends StateNotifier<ChatState> {
   final Ref _ref;
   StreamSubscription<List<double>>? _audioSubscription;
+  StreamSubscription<double>? _audioLevelSubscription;
 
   ChatNotifier(this._ref) : super(const ChatState());
 
@@ -116,10 +121,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
         const TranscriptionConfig(diarization: true),
       );
 
-      // Start audio capture
-      await audioService.start();
+      // Set state to recording BEFORE starting audio capture
+      state = state.copyWith(
+        mode: ChatViewMode.recording,
+        sessionId: sessionId,
+        transcriptionHandle: handle,
+        clearError: true,
+      );
 
-      // Listen to audio stream
+      // Listen to audio stream - must be set up before starting capture
       _audioSubscription = audioService.audioStream.listen((samples) async {
         if (state.mode == ChatViewMode.recording) {
           final segments = await _lexiconCore.processAudio(handle, samples);
@@ -133,12 +143,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }
       });
 
-      state = state.copyWith(
-        mode: ChatViewMode.recording,
-        sessionId: sessionId,
-        transcriptionHandle: handle,
-        clearError: true,
-      );
+      // Listen to audio level stream
+      _audioLevelSubscription = audioService.audioLevelStream.listen((level) {
+        state = state.copyWith(audioLevel: level);
+      });
+
+      // Start audio capture after subscriptions are ready
+      await audioService.start();
 
       _ref.read(appStateProvider.notifier).setRecording(true);
     } catch (e) {
@@ -180,6 +191,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       await audioService.stop();
       await _audioSubscription?.cancel();
       _audioSubscription = null;
+      await _audioLevelSubscription?.cancel();
+      _audioLevelSubscription = null;
 
       // Stop transcription
       if (state.transcriptionHandle != null) {
@@ -188,6 +201,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       state = state.copyWith(
         mode: ChatViewMode.idle,
+        audioLevel: 0.0,
         clearHandle: true,
       );
 
@@ -236,6 +250,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   /// Clear current session.
   void clearSession() {
     _audioSubscription?.cancel();
+    _audioLevelSubscription?.cancel();
     state = const ChatState();
     _ref.read(appStateProvider.notifier).setRecording(false);
   }
@@ -243,9 +258,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
   @override
   void dispose() {
     _audioSubscription?.cancel();
+    _audioLevelSubscription?.cancel();
     super.dispose();
   }
 }
+
+/// Provider for audio level in chat (0.0 to 1.0).
+final chatAudioLevelProvider = Provider<double>((ref) {
+  return ref.watch(chatProvider).audioLevel;
+});
 
 /// Provider for Chat view state.
 final chatProvider = StateNotifierProvider<ChatNotifier, ChatState>(
