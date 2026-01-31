@@ -105,12 +105,17 @@ class NoteNotifier extends StateNotifier<NoteState> {
         const TranscriptionConfig(diarization: false),
       );
 
-      // Start audio capture
-      await audioService.start();
+      // Set state to recording BEFORE starting audio capture
+      state = state.copyWith(
+        mode: NoteViewMode.recording,
+        sessionId: sessionId,
+        transcriptionHandle: handle,
+        clearError: true,
+      );
 
-      // Listen to audio stream
+      // Listen to audio stream - must be set up before starting capture
       _audioSubscription = audioService.audioStream.listen((samples) async {
-        if (state.mode == NoteViewMode.recording) {
+        if (state.mode == NoteViewMode.recording && samples.isNotEmpty) {
           final segments = await _lexiconCore.processAudio(handle, samples);
           if (segments.isNotEmpty) {
             final newText = state.transcriptionText +
@@ -129,12 +134,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
         state = state.copyWith(audioLevel: level);
       });
 
-      state = state.copyWith(
-        mode: NoteViewMode.recording,
-        sessionId: sessionId,
-        transcriptionHandle: handle,
-        clearError: true,
-      );
+      // Start audio capture after subscriptions are ready
+      await audioService.start();
 
       _ref.read(appStateProvider.notifier).setRecording(true);
     } catch (e) {

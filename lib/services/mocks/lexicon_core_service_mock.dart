@@ -139,13 +139,21 @@ class LexiconCoreServiceMock implements LexiconCoreService {
     }
   }
 
+  // Track audio processing state for mock transcription
+  final Map<String, _MockTranscriptionState> _transcriptionStates = {};
+
   @override
   Future<TranscriptionHandle> startTranscription(
     SessionId sessionId,
     TranscriptionConfig config,
   ) async {
     await _simulateDelay();
-    return TranscriptionHandle(_uuid.v4());
+    final handle = TranscriptionHandle(_uuid.v4());
+    _transcriptionStates[handle.value] = _MockTranscriptionState(
+      sessionId: sessionId,
+      diarization: config.diarization,
+    );
+    return handle;
   }
 
   @override
@@ -153,9 +161,54 @@ class LexiconCoreServiceMock implements LexiconCoreService {
     TranscriptionHandle handle,
     List<double> samples,
   ) async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    // Return empty until real transcription service is integrated
-    return [];
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    final state = _transcriptionStates[handle.value];
+    if (state == null) return [];
+
+    // Calculate audio energy to detect if there's actual audio
+    var energy = 0.0;
+    for (final sample in samples) {
+      energy += sample * sample;
+    }
+    energy = samples.isNotEmpty ? energy / samples.length : 0.0;
+
+    // Only "transcribe" if there's significant audio energy (very low threshold)
+    if (energy < 0.0001) {
+      state.silenceCount++;
+      return [];
+    }
+
+    state.silenceCount = 0;
+    state.chunkCount++;
+
+    // Generate mock transcription every ~1.5 seconds of audio (15 chunks at ~100ms each)
+    if (state.chunkCount % 15 != 0) return [];
+
+    final phrases = [
+      'Hello world',
+      'This is a test',
+      'The quick brown fox',
+      'Recording audio',
+      'Speech recognition',
+      'Transcription working',
+      'Mock data here',
+      'Testing one two three',
+    ];
+
+    final phraseIndex = (state.chunkCount ~/ 15) % phrases.length;
+    final startMs = (state.chunkCount - 15) * 100;
+    final endMs = state.chunkCount * 100;
+
+    return [
+      Segment(
+        id: _uuid.v4(),
+        speakerId: state.diarization ? (state.chunkCount ~/ 20) % 2 : null,
+        text: phrases[phraseIndex],
+        startMs: startMs,
+        endMs: endMs,
+      ),
+    ];
   }
 
   @override
@@ -239,4 +292,17 @@ class LexiconCoreServiceMock implements LexiconCoreService {
   Future<void> _simulateDelay() async {
     await Future.delayed(const Duration(milliseconds: 100));
   }
+}
+
+/// Internal state for mock transcription sessions.
+class _MockTranscriptionState {
+  final SessionId sessionId;
+  final bool diarization;
+  int chunkCount = 0;
+  int silenceCount = 0;
+
+  _MockTranscriptionState({
+    required this.sessionId,
+    required this.diarization,
+  });
 }
