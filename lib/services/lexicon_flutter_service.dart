@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/utils/spsc_double_buffer.dart';
 import '../src/rust/api.dart';
 import '../src/rust/error.dart';
 import '../src/rust/frb_generated.dart';
@@ -261,19 +262,18 @@ class LexiconFlutterService implements LexiconCoreService {
       return [];
     }
 
-    // Buffer incoming samples
-    active.audioBuffer.addAll(samples);
-
-    // Warn if buffer is getting large (indicates slow processing)
-    if (active.audioBuffer.length > _ActiveTranscription.bufferWarningThreshold) {
-      _log('WARNING: Audio buffer at ${active.audioBuffer.length} samples (${active.audioBuffer.length * 1000 ~/ 16000}ms)');
+    // Write samples to front buffer (producer side)
+    final dropped = active.audioBuffer.write(samples);
+    if (dropped > 0) {
+      active.droppedSamples += dropped;
+      _logError('WARNING: Dropped $dropped samples - buffer overflow (total: ${active.droppedSamples})');
     }
 
     // Calculate minimum samples from chunk size (at 16kHz)
     final minSamples = (_chunkSizeMs * 16000) ~/ 1000;
 
-    // Only process when we have enough audio
-    if (active.audioBuffer.length < minSamples) {
+    // Only process when we have enough audio in front buffer
+    if (active.audioBuffer.frontAvailable < minSamples) {
       return [];
     }
 
@@ -284,9 +284,11 @@ class LexiconFlutterService implements LexiconCoreService {
 
     active.isProcessing = true;
 
-    // Take all buffered samples for processing
-    final samplesToProcess = List<double>.from(active.audioBuffer);
-    active.audioBuffer.clear();
+    // Swap buffers: front becomes back (for processing), back becomes front (for new writes)
+    active.audioBuffer.swap();
+
+    // Read samples from back buffer (consumer side)
+    final samplesToProcess = active.audioBuffer.readBack();
 
     // Track timing for VAD
     final vadStart = DateTime.now();
@@ -393,6 +395,8 @@ class LexiconFlutterService implements LexiconCoreService {
       _logError('Unexpected transcription error: $e');
       return [];
     } finally {
+      // Clear back buffer after processing and mark as not processing
+      active.audioBuffer.clearBack();
       active.isProcessing = false;
     }
   }
@@ -404,9 +408,11 @@ class LexiconFlutterService implements LexiconCoreService {
       // Log latency summary for the session
       active.logLatencySummary();
 
-      // Process any remaining buffered audio (minimum 100ms = 1600 samples)
-      if (active.audioBuffer.length >= 1600 && _streamingTranscriber != null) {
-        final audioBytes = _samplesToF32Bytes(active.audioBuffer);
+      // Process any remaining buffered audio from front buffer (minimum 100ms = 1600 samples)
+      if (active.audioBuffer.frontAvailable >= 1600 && _streamingTranscriber != null) {
+        active.audioBuffer.swap();
+        final remainingSamples = active.audioBuffer.readBack();
+        final audioBytes = _samplesToF32Bytes(remainingSamples);
         final chunk = AudioChunk(
           data: audioBytes,
           timestampMs: active.timestampMs,
@@ -421,10 +427,15 @@ class LexiconFlutterService implements LexiconCoreService {
         );
         try {
           await _streamingTranscriber!.processChunk(chunk: chunk, config: config);
-          _log('Processed final ${active.audioBuffer.length} samples');
+          _log('Processed final ${remainingSamples.length} samples');
         } catch (e) {
           _logError('Error processing final audio: $e');
         }
+      }
+
+      // Log if any samples were dropped
+      if (active.droppedSamples > 0) {
+        _logError('Session ended with ${active.droppedSamples} dropped samples');
       }
       _streamingTranscriber?.stop();
     }
@@ -518,14 +529,14 @@ class _ActiveTranscription {
   final bool diarization;
   int timestampMs;
 
-  /// Growable audio buffer for samples.
-  /// Uses List instead of ring buffer to avoid audio loss when
-  /// Whisper processing takes longer than buffer capacity.
-  /// On emulator, Whisper can take 12+ seconds per chunk.
-  final List<double> audioBuffer = [];
+  /// SPSC double buffer for lock-free audio accumulation.
+  /// Uses two 30-second pre-allocated buffers (480000 samples each).
+  /// Producer writes to front, consumer processes back after swap.
+  /// No audio loss as long as processing time < 30 seconds.
+  final SpscDoubleBuffer audioBuffer = SpscDoubleBuffer(480000);
 
-  /// Warning threshold for buffer size (30 seconds of audio).
-  static const int bufferWarningThreshold = 480000;
+  /// Tracks dropped samples if buffer overflows (shouldn't happen).
+  int droppedSamples = 0;
 
   /// Flag to prevent concurrent transcription calls.
   bool isProcessing = false;
