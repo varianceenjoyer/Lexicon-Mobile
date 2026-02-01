@@ -202,12 +202,13 @@ void _onSegmentsReceived(List<Segment> segments) {
    - Changed `ref.watch` to `ref.listen` + `ref.read` pattern
    - Reduce buffer size experiment (#1) - configurable via settings
 
-3. **Phase 3 - Architecture** ✅ REVISED
+3. **Phase 3 - Architecture** ✅ COMPLETE
    - Isolate-based processing (#3) - deferred (FFI already async)
-   - [x] Pre-allocated buffers (#4) - **REVERTED**: Ring buffer caused audio dropout
-   - Created `AudioRingBuffer` class but reverted to growable List
-   - Ring buffer overwrites when processing > buffer capacity (12s >> 2s on emulator)
-   - Growable buffer trades memory for correctness until Whisper speeds up
+   - [x] Pre-allocated buffers (#4) - **SPSC Double Buffer**
+   - Two 30-second pre-allocated buffers (480K samples each, ~7.3MB total)
+   - Lock-free producer/consumer pattern: write to front, process back, swap
+   - No GC pressure, no audio loss (buffer capacity > max processing time)
+   - Tracks and warns if samples dropped (shouldn't happen with 30s buffers)
 
 4. **Phase 4 - Polish** ✅ PARTIAL
    - FFI batching (#5) - deferred (ring buffer handles accumulation)
