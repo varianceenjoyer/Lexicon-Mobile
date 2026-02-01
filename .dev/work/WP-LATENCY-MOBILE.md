@@ -227,27 +227,35 @@ void _onSegmentsReceived(List<Segment> segments) {
 
 ## Metrics to Track
 
-| Metric | Current (Emulator) | Target |
-|--------|---------|--------|
-| Speech onset to first text | 11-12 sec | < 2 sec (emulator), < 1 sec (device) |
-| FFI call duration | **11,753-12,439ms** | < 50ms |
-| VAD processing | 0.02-0.08ms ✅ | negligible |
-| Audio conversion | 0.04-0.05ms ✅ | negligible |
-| Audio buffer delay | 100ms | 50-100ms adaptive |
-| UI update latency | ~4-10ms (EGL stats) ✅ | < 16ms |
-| Memory per minute recording | ? | < 10MB |
+| Metric | Emulator (x86_64) | Physical (arm64) | Target |
+|--------|-------------------|------------------|--------|
+| Speech onset to first text | 11-12 sec | **5.8-6.0 sec** | < 2 sec / < 1 sec |
+| FFI call duration | 11,753-12,439ms | **3,917-4,128ms** | < 50ms |
+| VAD processing | 0.02-0.08ms ✅ | 0.11ms ✅ | negligible |
+| Audio conversion | 0.04-0.05ms ✅ | 0.12-0.13ms ✅ | negligible |
+| Audio buffer delay | 100ms | 100ms | 50-100ms adaptive |
+| UI update latency | ~4-10ms ✅ | ~4-10ms ✅ | < 16ms |
+| Memory (SPSC buffer) | 7.3MB fixed ✅ | 7.3MB fixed ✅ | < 10MB |
 
 ### Measurement Findings (2026-01-31)
 
 **Bottleneck identified**: 99.99% of latency is in FFI/Whisper inference, not Dart-side processing.
 
+**Emulator:**
 ```
 [LATENCY BREAKDOWN] VAD: 0.08ms, Conv: 0.045ms, FFI: 11753ms, Pipeline: 11754ms
 ```
 
-The Dart-side optimizations (ring buffer, debouncing, provider fix) are complete and working.
+**Physical device (arm64):**
+```
+[LATENCY BREAKDOWN] VAD: 0.109ms, Conv: 0.131ms, FFI: 4128ms, Pipeline: 4128ms
+```
+
+Physical device is **~3x faster** than emulator, but still not meeting <1 sec target.
+
+The Dart-side optimizations (SPSC buffer, debouncing, provider fix) are complete and working.
 The remaining latency improvement requires:
-1. Testing on physical device (expected significant improvement)
+1. ~~Testing on physical device~~ ✅ Done - 3x improvement confirmed
 2. Whisper model optimization (out of scope - see WP-LATENCY-STT in Lexicon-Local-Server)
 
 ## Research References
