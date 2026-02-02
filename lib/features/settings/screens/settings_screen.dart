@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/settings_provider.dart';
+import 'audio_test_screen.dart';
 
 /// Settings screen for configuring app preferences.
 class SettingsScreen extends ConsumerWidget {
@@ -20,6 +21,7 @@ class SettingsScreen extends ConsumerWidget {
           _buildSectionHeader(context, 'Audio'),
           _buildSilenceThresholdTile(context, ref, settings),
           _buildChunkSizeTile(context, ref, settings),
+          _buildAudioTestTile(context),
           const Divider(),
           _buildSectionHeader(context, 'About'),
           const ListTile(
@@ -110,5 +112,21 @@ class SettingsScreen extends ConsumerWidget {
     if (ms <= 500) return 'Balanced';
     if (ms <= 700) return 'Better accuracy';
     return 'Best accuracy, higher latency';
+  }
+
+  Widget _buildAudioTestTile(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.mic),
+      title: const Text('Test Microphone'),
+      subtitle: const Text('Record and playback to verify audio quality'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const AudioTestScreen(),
+          ),
+        );
+      },
+    );
   }
 }
