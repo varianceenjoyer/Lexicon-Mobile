@@ -14,11 +14,11 @@ import '../src/rust/frb_generated.dart';
 import '../src/rust/types.dart' as rust;
 import 'lexicon_core_service.dart';
 
-/// Default model filename.
-const String kDefaultModelName = 'ggml-tiny-q5_1.bin';
+/// Default sherpa model directory name.
+const String kDefaultSherpaModelDir = 'sherpa-onnx-zipformer-gigaspeech-2023-12-12';
 
-/// Asset path for the bundled model.
-const String kModelAssetPath = 'assets/models/$kDefaultModelName';
+/// Asset path for the bundled sherpa model directory.
+const String kSherpaModelAssetPath = 'assets/models/sherpa/$kDefaultSherpaModelDir';
 
 /// Real implementation of LexiconCoreService using native Lexicon library.
 class LexiconFlutterService implements LexiconCoreService {
@@ -39,8 +39,8 @@ class LexiconFlutterService implements LexiconCoreService {
 
   final _uuid = const Uuid();
 
-  // Streaming transcriber for real-time transcription
-  StreamingTranscriber? _streamingTranscriber;
+  // Sherpa transcriber for real-time transcription (faster than Whisper)
+  SherpaTranscriber? _sherpaTranscriber;
   bool _modelLoaded = false;
 
   // Session storage (in-memory for now, will use SQLite later)
@@ -104,74 +104,108 @@ class LexiconFlutterService implements LexiconCoreService {
   /// Get the model directory path.
   static String? get modelDir => _modelDir;
 
-  /// Load the transcription model from a path.
-  Future<void> loadModel(String modelPath) async {
+  /// Load the transcription model from a directory path (sherpa-onnx model).
+  Future<void> loadModel(String modelDir) async {
     try {
-      _streamingTranscriber ??= await StreamingTranscriber.newInstance();
-      await _streamingTranscriber!.loadModel(modelPath: modelPath);
+      _sherpaTranscriber ??= await SherpaTranscriber.newInstance();
+      await _sherpaTranscriber!.loadModel(modelDir: modelDir);
       _modelLoaded = true;
-      _log('Model loaded successfully from: $modelPath');
+      _log('Sherpa model loaded successfully from: $modelDir');
     } on LexiconFlutterError catch (e) {
       _logError('Failed to load model: $e');
       rethrow;
     }
   }
 
-  /// Load the default bundled model from assets.
+  /// Load the default bundled sherpa model from assets.
   ///
-  /// Copies the model from assets to the filesystem on first run.
+  /// The sherpa model is a directory containing encoder, decoder, joiner, and tokens files.
+  /// These are bundled in assets and loaded directly from the asset path.
   Future<void> loadDefaultModel() async {
     if (_modelLoaded) return;
 
     try {
-      _log('Loading default model...');
-      final modelPath = await _ensureModelCopied();
-      await loadModel(modelPath);
+      _log('Loading default sherpa model...');
+      // Sherpa model is a directory - we pass the asset path directly
+      // The native code will handle loading from the app's asset bundle
+      final modelDir = await _ensureSherpaModelReady();
+      await loadModel(modelDir);
     } on LexiconFlutterError catch (e) {
       // Handle specific Lexicon errors
       if (e is LexiconFlutterError_ModelLoadFailed) {
-        // Model might be corrupted - try to re-copy from assets
-        _logError('Model load failed, attempting recovery: $e');
-        final modelPath = '$_modelDir/$kDefaultModelName';
-        final modelFile = File(modelPath);
-        if (await modelFile.exists()) {
-          await modelFile.delete();
-        }
-        // Re-copy and retry once
-        final newPath = await _ensureModelCopied();
-        await loadModel(newPath);
+        _logError('Sherpa model load failed: $e');
+        // Re-copy model directory and retry
+        final modelDir = await _ensureSherpaModelReady(forceRecopy: true);
+        await loadModel(modelDir);
       } else {
         rethrow;
       }
     }
   }
 
-  /// Ensure the model file is copied from assets to the filesystem.
+  /// Ensure the sherpa model directory is ready in the filesystem.
   ///
-  /// Returns the path to the model file.
-  Future<String> _ensureModelCopied() async {
-    final modelPath = '$_modelDir/$kDefaultModelName';
-    final modelFile = File(modelPath);
+  /// Copies all model files from assets to the filesystem if not already present.
+  /// Returns the path to the model directory.
+  Future<String> _ensureSherpaModelReady({bool forceRecopy = false}) async {
+    final sherpaModelDir = '$_modelDir/sherpa/$kDefaultSherpaModelDir';
+    final modelDirObj = Directory(sherpaModelDir);
 
-    // Create models directory if needed
-    final modelDir = Directory(_modelDir!);
-    if (!await modelDir.exists()) {
-      await modelDir.create(recursive: true);
+    // Check if model directory exists and has required files
+    final requiredFiles = ['tokens.txt'];
+    bool modelComplete = await modelDirObj.exists();
+
+    if (modelComplete && !forceRecopy) {
+      // Verify at least tokens.txt exists
+      for (final file in requiredFiles) {
+        if (!await File('$sherpaModelDir/$file').exists()) {
+          modelComplete = false;
+          break;
+        }
+      }
     }
 
-    // Copy from assets if not already present
-    if (!await modelFile.exists()) {
-      final data = await rootBundle.load(kModelAssetPath);
-      await modelFile.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-      );
+    if (modelComplete && !forceRecopy) {
+      _log('Sherpa model already present at: $sherpaModelDir');
+      return sherpaModelDir;
     }
 
-    return modelPath;
+    // Create model directory
+    if (forceRecopy && await modelDirObj.exists()) {
+      await modelDirObj.delete(recursive: true);
+    }
+    await modelDirObj.create(recursive: true);
+
+    // List of model files to copy from assets
+    final modelFiles = [
+      'encoder-epoch-30-avg-1.int8.onnx',
+      'decoder-epoch-30-avg-1.int8.onnx',
+      'joiner-epoch-30-avg-1.int8.onnx',
+      'tokens.txt',
+    ];
+
+    _log('Copying sherpa model files from assets...');
+    for (final fileName in modelFiles) {
+      try {
+        final assetPath = '$kSherpaModelAssetPath/$fileName';
+        final data = await rootBundle.load(assetPath);
+        final destPath = '$sherpaModelDir/$fileName';
+        await File(destPath).writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        );
+        _log('  Copied: $fileName');
+      } catch (e) {
+        _logError('  Failed to copy $fileName: $e');
+        // Continue - some files may be optional (like non-int8 versions)
+      }
+    }
+
+    _log('Sherpa model ready at: $sherpaModelDir');
+    return sherpaModelDir;
   }
 
   /// Check if model is loaded and ready.
-  bool get isModelLoaded => _modelLoaded && (_streamingTranscriber?.isReady() ?? false);
+  bool get isModelLoaded => _modelLoaded && (_sherpaTranscriber?.isModelLoaded() ?? false);
 
   @override
   Future<SessionId> createSession(SessionConfig config) async {
@@ -257,7 +291,7 @@ class LexiconFlutterService implements LexiconCoreService {
     final pipelineStart = DateTime.now();
 
     final active = _activeTranscriptions[handle.value];
-    if (active == null || _streamingTranscriber == null) {
+    if (active == null || _sherpaTranscriber == null) {
       // Silently return - this happens during startup before session is ready
       return [];
     }
@@ -326,14 +360,7 @@ class LexiconFlutterService implements LexiconCoreService {
     final conversionDuration = DateTime.now().difference(conversionStart);
     active.totalConversionTime += conversionDuration;
 
-    // Create audio chunk
-    final chunk = AudioChunk(
-      data: audioBytes,
-      timestampMs: active.timestampMs,
-      isFinal: false,
-    );
-
-    // Process through native library
+    // Process through sherpa transcriber (batch mode - faster than streaming whisper)
     const config = rust.TranscriptionConfig(
       language: null, // Auto-detect
       translate: false,
@@ -346,10 +373,12 @@ class LexiconFlutterService implements LexiconCoreService {
     final ffiStart = DateTime.now();
 
     try {
-      final rustSegments = await _streamingTranscriber!.processChunk(
-        chunk: chunk,
+      // Sherpa transcribe expects List<int> (bytes), not AudioChunk
+      final result = await _sherpaTranscriber!.transcribe(
+        audioData: audioBytes,
         config: config,
       );
+      final rustSegments = result.segments;
 
       final ffiDuration = DateTime.now().difference(ffiStart);
       active.totalFfiTime += ffiDuration;
@@ -409,15 +438,10 @@ class LexiconFlutterService implements LexiconCoreService {
       active.logLatencySummary();
 
       // Process any remaining buffered audio from front buffer (minimum 100ms = 1600 samples)
-      if (active.audioBuffer.frontAvailable >= 1600 && _streamingTranscriber != null) {
+      if (active.audioBuffer.frontAvailable >= 1600 && _sherpaTranscriber != null) {
         active.audioBuffer.swap();
         final remainingSamples = active.audioBuffer.readBack();
         final audioBytes = _samplesToF32Bytes(remainingSamples);
-        final chunk = AudioChunk(
-          data: audioBytes,
-          timestampMs: active.timestampMs,
-          isFinal: true,
-        );
         const config = rust.TranscriptionConfig(
           language: null,
           translate: false,
@@ -426,7 +450,7 @@ class LexiconFlutterService implements LexiconCoreService {
           temperature: 0.0,
         );
         try {
-          await _streamingTranscriber!.processChunk(chunk: chunk, config: config);
+          await _sherpaTranscriber!.transcribe(audioData: audioBytes, config: config);
           _log('Processed final ${remainingSamples.length} samples');
         } catch (e) {
           _logError('Error processing final audio: $e');
@@ -437,14 +461,14 @@ class LexiconFlutterService implements LexiconCoreService {
       if (active.droppedSamples > 0) {
         _logError('Session ended with ${active.droppedSamples} dropped samples');
       }
-      _streamingTranscriber?.stop();
+      // Note: SherpaTranscriber doesn't have a stop() method - it's batch-based
     }
   }
 
   @override
   Future<void> cancelTranscription(TranscriptionHandle handle) async {
     _activeTranscriptions.remove(handle.value);
-    _streamingTranscriber?.stop();
+    // Note: SherpaTranscriber doesn't have a stop() method - it's batch-based
   }
 
   @override
