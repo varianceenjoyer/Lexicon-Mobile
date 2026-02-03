@@ -50,16 +50,18 @@ class LexiconFlutterService implements LexiconCoreService {
   final Map<String, _ActiveTranscription> _activeTranscriptions = {};
 
   // Configurable settings (updated via updateSettings)
-  double _silenceThreshold = 0.01;
-  int _chunkSizeMs = 100;
+  double _silenceThreshold = 0.0; // Disabled by default - sherpa handles silence well
+  int _chunkSizeMs = 3000; // Default 3 seconds for offline model accuracy
 
   @override
   void updateSettings({double? silenceThreshold, int? chunkSizeMs}) {
     if (silenceThreshold != null) {
       _silenceThreshold = silenceThreshold.clamp(0.0, 0.1);
+      _log('Updated silence threshold: $_silenceThreshold');
     }
     if (chunkSizeMs != null) {
-      _chunkSizeMs = chunkSizeMs.clamp(100, 1000);
+      _chunkSizeMs = chunkSizeMs.clamp(1000, 5000);
+      _log('Updated chunk size: ${_chunkSizeMs}ms');
     }
   }
 
@@ -303,20 +305,58 @@ class LexiconFlutterService implements LexiconCoreService {
       _logError('WARNING: Dropped $dropped samples - buffer overflow (total: ${active.droppedSamples})');
     }
 
-    // Calculate minimum samples from chunk size (at 16kHz)
-    final minSamples = (_chunkSizeMs * 16000) ~/ 1000;
+    // Check RMS of incoming samples for endpoint detection
+    final incomingRms = _calculateRms(samples);
+    final isIncomingSilent = incomingRms < 0.005; // Low threshold for endpoint detection
 
-    // Only process when we have enough audio in front buffer
-    if (active.audioBuffer.frontAvailable < minSamples) {
+    // Track silence duration for endpoint detection
+    if (isIncomingSilent) {
+      active.consecutiveSilenceMs += (samples.length * 1000) ~/ 16000;
+    } else {
+      active.consecutiveSilenceMs = 0;
+      active.hasSpeechInBuffer = true;
+    }
+
+    final buffered = active.audioBuffer.frontAvailable;
+    final bufferedMs = (buffered * 1000) ~/ 16000;
+
+    // Minimum audio to process (at least 500ms to have some context)
+    const minProcessMs = 500;
+    const minSamples = minProcessMs * 16; // 500ms at 16kHz
+
+    // Maximum buffer before forced processing (10 seconds)
+    const maxBufferMs = 10000;
+    const maxSamples = maxBufferMs * 16;
+
+    // Endpoint detection: process when we detect silence after speech
+    // OR when buffer is getting too full
+    final endpointDetected = active.hasSpeechInBuffer &&
+        active.consecutiveSilenceMs >= 300; // 300ms of silence = endpoint
+    final bufferFull = buffered >= maxSamples;
+    final hasEnoughAudio = buffered >= minSamples;
+
+    // Decide whether to process
+    final shouldProcess = hasEnoughAudio && (endpointDetected || bufferFull);
+
+    if (!shouldProcess) {
+      // Log buffering progress periodically
+      if (bufferedMs % 1000 < 100) {
+        _log('Buffering: ${bufferedMs}ms, silence: ${active.consecutiveSilenceMs}ms, hasSpeech: ${active.hasSpeechInBuffer}');
+      }
       return [];
     }
 
     // Prevent concurrent transcription calls - if already processing, just buffer
     if (active.isProcessing) {
+      _log('Already processing, buffering audio (${bufferedMs}ms in buffer)');
       return [];
     }
 
+    _log('Endpoint detected: buffered=${bufferedMs}ms, silence=${active.consecutiveSilenceMs}ms, bufferFull=$bufferFull');
+
     active.isProcessing = true;
+    active.hasSpeechInBuffer = false;
+    active.consecutiveSilenceMs = 0;
 
     // Swap buffers: front becomes back (for processing), back becomes front (for new writes)
     active.audioBuffer.swap();
@@ -327,19 +367,23 @@ class LexiconFlutterService implements LexiconCoreService {
     // Track timing for VAD
     final vadStart = DateTime.now();
 
-    // Lightweight VAD: skip silence to avoid Whisper hallucinations
+    // Calculate overall RMS of chunk
     final rms = _calculateRms(samplesToProcess);
-    final isSilent = rms < _silenceThreshold;
+    // Skip if chunk is almost entirely silent (likely just noise)
+    final isSilent = rms < 0.003;
 
     final vadDuration = DateTime.now().difference(vadStart);
     active.totalVadTime += vadDuration;
 
+    final chunkDurationMs = (samplesToProcess.length * 1000) ~/ 16000;
+    _log('Processing ${chunkDurationMs}ms chunk, RMS: ${rms.toStringAsFixed(4)}, silent: $isSilent');
+
     if (isSilent) {
       // Still advance timestamp to maintain timing
-      final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
-      active.timestampMs += durationMs;
+      active.timestampMs += chunkDurationMs;
       active.isProcessing = false;
       active.wasInSilence = true;
+      _log('Skipped silent chunk (${chunkDurationMs}ms)');
       return [];
     }
 
@@ -388,6 +432,8 @@ class LexiconFlutterService implements LexiconCoreService {
       // Advance timestamp (samples at 16kHz)
       final durationMs = (samplesToProcess.length * 1000) ~/ 16000;
       active.timestampMs += durationMs;
+
+      _log('FFI transcription took ${ffiDuration.inMilliseconds}ms for ${durationMs}ms audio, got ${rustSegments.length} segments');
 
       // Convert to our Segment type
       final segments = rustSegments.map((s) {
@@ -567,6 +613,12 @@ class _ActiveTranscription {
 
   /// Tracks whether we were in silence on the previous chunk.
   bool wasInSilence = true;
+
+  /// Consecutive milliseconds of silence for endpoint detection.
+  int consecutiveSilenceMs = 0;
+
+  /// Whether we've detected speech in the current buffer.
+  bool hasSpeechInBuffer = false;
 
   /// Timestamp (wall clock) when speech was first detected after silence.
   DateTime? speechOnsetTime;

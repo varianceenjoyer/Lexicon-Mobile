@@ -22,6 +22,7 @@ class SettingsScreen extends ConsumerWidget {
           _buildSilenceThresholdTile(context, ref, settings),
           _buildChunkSizeTile(context, ref, settings),
           _buildAudioTestTile(context),
+          _buildResetSettingsTile(context, ref),
           const Divider(),
           _buildSectionHeader(context, 'About'),
           const ListTile(
@@ -57,19 +58,19 @@ class SettingsScreen extends ConsumerWidget {
 
     return ListTile(
       leading: const Icon(Icons.volume_off),
-      title: const Text('Silence Threshold'),
+      title: const Text('Silence Filter'),
       subtitle: Text(
         percentage == 0
-            ? 'Disabled (process all audio)'
-            : '$percentage% - Skip audio below this level',
+            ? 'Off (recommended) - process all audio'
+            : '$percentage% - may skip quiet speech!',
       ),
       trailing: SizedBox(
         width: 200,
         child: Slider(
           value: settings.silenceThreshold,
           min: 0.0,
-          max: 0.1,
-          divisions: 20,
+          max: 0.05, // Reduced max - high values filter out speech
+          divisions: 10,
           label: percentage == 0 ? 'Off' : '$percentage%',
           onChanged: (value) {
             ref.read(settingsProvider.notifier).setSilenceThreshold(value);
@@ -88,16 +89,16 @@ class SettingsScreen extends ConsumerWidget {
       leading: const Icon(Icons.timer),
       title: const Text('Audio Chunk Size'),
       subtitle: Text(
-        '${settings.chunkSizeMs}ms - ${_chunkSizeDescription(settings.chunkSizeMs)}',
+        '${(settings.chunkSizeMs / 1000).toStringAsFixed(1)}s - ${_chunkSizeDescription(settings.chunkSizeMs)}',
       ),
       trailing: SizedBox(
         width: 200,
         child: Slider(
           value: settings.chunkSizeMs.toDouble(),
-          min: 100,
-          max: 1000,
-          divisions: 9,
-          label: '${settings.chunkSizeMs}ms',
+          min: 1000,
+          max: 5000,
+          divisions: 8,
+          label: '${(settings.chunkSizeMs / 1000).toStringAsFixed(1)}s',
           onChanged: (value) {
             ref.read(settingsProvider.notifier).setChunkSizeMs(value.round());
           },
@@ -107,11 +108,10 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   String _chunkSizeDescription(int ms) {
-    if (ms <= 100) return 'Lowest latency, higher CPU';
-    if (ms <= 300) return 'Low latency';
-    if (ms <= 500) return 'Balanced';
-    if (ms <= 700) return 'Better accuracy';
-    return 'Best accuracy, higher latency';
+    if (ms <= 1500) return 'Faster updates, lower accuracy';
+    if (ms <= 2500) return 'Balanced';
+    if (ms <= 3500) return 'Better accuracy';
+    return 'Best accuracy, slower updates';
   }
 
   Widget _buildAudioTestTile(BuildContext context) {
@@ -126,6 +126,46 @@ class SettingsScreen extends ConsumerWidget {
             builder: (context) => const AudioTestScreen(),
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildResetSettingsTile(BuildContext context, WidgetRef ref) {
+    return ListTile(
+      leading: const Icon(Icons.restore),
+      title: const Text('Reset to Defaults'),
+      subtitle: const Text('Silence: Off, Chunk size: 3s'),
+      onTap: () async {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reset Settings?'),
+            content: const Text(
+              'This will reset audio settings to recommended defaults:\n\n'
+              '• Silence Filter: Off\n'
+              '• Chunk Size: 3 seconds',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed == true) {
+          await ref.read(settingsProvider.notifier).resetToDefaults();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Settings reset to defaults')),
+            );
+          }
+        }
       },
     );
   }

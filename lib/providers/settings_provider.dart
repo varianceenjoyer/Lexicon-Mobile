@@ -3,16 +3,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Application settings state.
 class SettingsState {
-  /// Silence threshold for VAD (0.0 - 1.0).
+  /// Silence threshold for VAD (0.0 - 0.1).
   /// Audio below this RMS level is considered silence and skipped.
+  /// Default 0 = disabled (process all audio). Sherpa model handles silence well.
   final double silenceThreshold;
 
   /// Minimum audio chunk size in milliseconds.
+  /// Higher values give the offline STT model more context for better accuracy.
+  /// Lower values provide faster (but less accurate) incremental results.
   final int chunkSizeMs;
 
   const SettingsState({
-    this.silenceThreshold = 0.01,
-    this.chunkSizeMs = 100,
+    this.silenceThreshold = 0.0, // Disabled by default - sherpa handles silence well
+    this.chunkSizeMs = 3000, // 3 seconds - gives offline model enough context
   });
 
   SettingsState copyWith({
@@ -40,8 +43,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> _loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
 
-    final silenceThreshold = _prefs?.getDouble(_keySilenceThreshold) ?? 0.01;
-    final chunkSizeMs = _prefs?.getInt(_keyChunkSizeMs) ?? 100;
+    final silenceThreshold = _prefs?.getDouble(_keySilenceThreshold) ?? 0.0;
+    final chunkSizeMs = _prefs?.getInt(_keyChunkSizeMs) ?? 3000;
 
     state = SettingsState(
       silenceThreshold: silenceThreshold,
@@ -57,10 +60,18 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> setChunkSizeMs(int value) async {
-    // Clamp to valid range (100ms - 1000ms)
-    final clamped = value.clamp(100, 1000);
+    // Clamp to valid range (1000ms - 5000ms)
+    // Offline STT model needs at least 1s of audio for context
+    final clamped = value.clamp(1000, 5000);
     state = state.copyWith(chunkSizeMs: clamped);
     await _prefs?.setInt(_keyChunkSizeMs, clamped);
+  }
+
+  /// Reset all settings to defaults.
+  Future<void> resetToDefaults() async {
+    await _prefs?.remove(_keySilenceThreshold);
+    await _prefs?.remove(_keyChunkSizeMs);
+    state = const SettingsState(); // Uses default values
   }
 }
 
