@@ -329,6 +329,17 @@ class NoteNotifier extends StateNotifier<NoteState> {
     }
   }
 
+  /// Clear transcription text only, keeping session intact.
+  void clearText() {
+    _segmentDebounce?.cancel();
+    _pendingSegments.clear();
+    state = state.copyWith(
+      transcriptionText: '',
+      segments: [],
+      isEdited: true,
+    );
+  }
+
   /// Clear current session.
   void clearSession() {
     _audioSubscription?.cancel();

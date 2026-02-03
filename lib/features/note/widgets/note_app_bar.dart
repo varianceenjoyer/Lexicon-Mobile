@@ -7,12 +7,14 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final ValueChanged<String> onTitleEdit;
   final VoidCallback? onExport;
+  final VoidCallback? onClearText;
   final VoidCallback? onDelete;
 
   const NoteAppBar({
     this.title,
     required this.onTitleEdit,
     this.onExport,
+    this.onClearText,
     this.onDelete,
     super.key,
   });
@@ -63,6 +65,14 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
                 contentPadding: EdgeInsets.zero,
               ),
             ),
+            const PopupMenuItem(
+              value: 'clear',
+              child: ListTile(
+                leading: Icon(Icons.clear_all),
+                title: Text('Clear Text'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
             const PopupMenuDivider(),
             PopupMenuItem(
               value: 'delete',
@@ -102,10 +112,36 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
       case 'export':
         onExport?.call();
         break;
+      case 'clear':
+        _confirmClearText(context);
+        break;
       case 'delete':
         _confirmDelete(context);
         break;
     }
+  }
+
+  void _confirmClearText(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Text'),
+        content: const Text('Clear all transcription text? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onClearText?.call();
+            },
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _confirmDelete(BuildContext context) {

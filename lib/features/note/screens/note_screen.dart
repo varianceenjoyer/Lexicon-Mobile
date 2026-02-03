@@ -74,6 +74,9 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
       appBar: NoteAppBar(
         title: noteState.title,
         onTitleEdit: (title) => ref.read(noteProvider.notifier).updateTitle(title),
+        onClearText: () {
+          ref.read(noteProvider.notifier).clearText();
+        },
         onDelete: () {
           ref.read(noteProvider.notifier).clearSession();
         },
