@@ -60,6 +60,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/models/
+    # STT model (sherpa-onnx ZipFormer) - Whisper model removed to reduce APK size
     - assets/models/sherpa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/
     - assets/audio/
