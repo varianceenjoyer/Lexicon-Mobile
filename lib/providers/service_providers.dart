@@ -8,6 +8,29 @@ import '../services/mocks/lexicon_core_service_mock.dart';
 import '../services/tts_playback_service.dart';
 import 'settings_provider.dart';
 
+/// Provider that preloads the STT model at app startup.
+/// Returns true when the model is loaded and ready.
+final modelPreloadProvider = FutureProvider<bool>((ref) async {
+  if (!LexiconFlutterService.isInitialized) {
+    debugPrint('[modelPreloadProvider] Service not initialized, skipping preload');
+    return false;
+  }
+
+  debugPrint('[modelPreloadProvider] Starting model preload...');
+  final stopwatch = Stopwatch()..start();
+
+  try {
+    await LexiconFlutterService.preloadModel();
+    stopwatch.stop();
+    debugPrint('[modelPreloadProvider] Model preloaded in ${stopwatch.elapsedMilliseconds}ms');
+    return true;
+  } catch (e) {
+    stopwatch.stop();
+    debugPrint('[modelPreloadProvider] Model preload failed after ${stopwatch.elapsedMilliseconds}ms: $e');
+    return false;
+  }
+});
+
 /// Lexicon Core service provider.
 ///
 /// Returns real FFI implementation if initialized, otherwise mock.

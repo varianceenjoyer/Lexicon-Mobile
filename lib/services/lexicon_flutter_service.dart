@@ -100,6 +100,20 @@ class LexiconFlutterService implements LexiconCoreService {
   /// Check if the library is initialized.
   static bool get isInitialized => _initialized;
 
+  /// Check if the model is preloaded and ready.
+  static bool get isModelPreloaded => _instance?._modelLoaded ?? false;
+
+  /// Preload the default model at app startup.
+  /// Call this after initialize() to eagerly load the model.
+  static Future<void> preloadModel() async {
+    if (!_initialized) {
+      debugPrint('[LexiconFlutterService] Cannot preload - not initialized');
+      return;
+    }
+    final service = LexiconFlutterService();
+    await service.loadDefaultModel();
+  }
+
   /// Get the data directory path.
   static String? get dataDir => _dataDir;
 
