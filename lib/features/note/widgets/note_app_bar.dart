@@ -8,6 +8,7 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
   final ValueChanged<String> onTitleEdit;
   final VoidCallback? onExport;
   final VoidCallback? onClearText;
+  final VoidCallback? onAutoTest;
   final VoidCallback? onDelete;
 
   const NoteAppBar({
@@ -15,6 +16,7 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onTitleEdit,
     this.onExport,
     this.onClearText,
+    this.onAutoTest,
     this.onDelete,
     super.key,
   });
@@ -73,6 +75,14 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
                 contentPadding: EdgeInsets.zero,
               ),
             ),
+            const PopupMenuItem(
+              value: 'autotest',
+              child: ListTile(
+                leading: Icon(Icons.science),
+                title: Text('Auto Test'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
             const PopupMenuDivider(),
             PopupMenuItem(
               value: 'delete',
@@ -114,6 +124,9 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
         break;
       case 'clear':
         _confirmClearText(context);
+        break;
+      case 'autotest':
+        onAutoTest?.call();
         break;
       case 'delete':
         _confirmDelete(context);

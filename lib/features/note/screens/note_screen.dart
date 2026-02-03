@@ -77,6 +77,9 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
         onClearText: () {
           ref.read(noteProvider.notifier).clearText();
         },
+        onAutoTest: () {
+          ref.read(noteProvider.notifier).runAutoTest();
+        },
         onDelete: () {
           ref.read(noteProvider.notifier).clearSession();
         },
