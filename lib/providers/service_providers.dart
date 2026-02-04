@@ -17,16 +17,25 @@ final modelPreloadProvider = FutureProvider<bool>((ref) async {
   }
 
   debugPrint('[modelPreloadProvider] Starting model preload...');
-  final stopwatch = Stopwatch()..start();
 
   try {
-    await LexiconFlutterService.preloadModel();
-    stopwatch.stop();
-    debugPrint('[modelPreloadProvider] Model preloaded in ${stopwatch.elapsedMilliseconds}ms');
+    final loadTimeMs = await LexiconFlutterService.preloadModel();
+    if (loadTimeMs == 0) {
+      debugPrint('[modelPreloadProvider] Model loaded from cache (instant)');
+    } else if (loadTimeMs > 0) {
+      debugPrint('[modelPreloadProvider] Model preloaded in ${loadTimeMs}ms');
+    } else {
+      debugPrint('[modelPreloadProvider] Model preload skipped (not initialized)');
+      return false;
+    }
+
+    // Log cache stats
+    final stats = LexiconFlutterService.getCacheStats();
+    debugPrint('[modelPreloadProvider] Cache: ${stats.totalBytes ~/ BigInt.from(1024 * 1024)}MB / ${stats.maxBytes ~/ BigInt.from(1024 * 1024)}MB, sherpa=${stats.sherpaCached}');
+
     return true;
   } catch (e) {
-    stopwatch.stop();
-    debugPrint('[modelPreloadProvider] Model preload failed after ${stopwatch.elapsedMilliseconds}ms: $e');
+    debugPrint('[modelPreloadProvider] Model preload failed: $e');
     return false;
   }
 });

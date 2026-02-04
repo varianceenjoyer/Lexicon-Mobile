@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/utils/spsc_double_buffer.dart';
-import '../src/rust/api.dart';
+import '../src/rust/api.dart' as api;
 import '../src/rust/error.dart';
 import '../src/rust/frb_generated.dart';
 import '../src/rust/types.dart' as rust;
@@ -40,7 +40,7 @@ class LexiconFlutterService implements LexiconCoreService {
   final _uuid = const Uuid();
 
   // Sherpa transcriber for real-time transcription (faster than Whisper)
-  SherpaTranscriber? _sherpaTranscriber;
+  api.SherpaTranscriber? _sherpaTranscriber;
   bool _modelLoaded = false;
 
   // Session storage (in-memory for now, will use SQLite later)
@@ -83,15 +83,23 @@ class LexiconFlutterService implements LexiconCoreService {
     debugPrint('[LexiconFlutterService] Model dir: $_modelDir');
 
     // Initialize Lexicon core
-    initLexicon(dataDir: _dataDir!);
+    api.initLexicon(dataDir: _dataDir!);
 
     // Log library version and platform info
-    final version = getVersion();
-    final platformInfo = getPlatformInfo();
+    final version = api.getVersion();
+    final platformInfo = api.getPlatformInfo();
     debugPrint('[LexiconFlutterService] Lexicon version: $version');
     debugPrint('[LexiconFlutterService] Platform: ${platformInfo.platform}');
     debugPrint('[LexiconFlutterService] Model tier: ${platformInfo.modelTier}');
     debugPrint('[LexiconFlutterService] Available memory: ${platformInfo.availableMemoryMb} MB');
+
+    // Configure model cache size based on available memory (30% of available)
+    final cacheMaxBytes = BigInt.from(platformInfo.availableMemoryMb.toInt()) *
+        BigInt.from(1024 * 1024) *
+        BigInt.from(30) ~/
+        BigInt.from(100);
+    api.setCacheMaxMemory(maxBytes: cacheMaxBytes);
+    debugPrint('[LexiconFlutterService] Cache max set to ${cacheMaxBytes ~/ BigInt.from(1024 * 1024)} MB');
 
     _initialized = true;
     debugPrint('[LexiconFlutterService] Initialization complete');
@@ -104,14 +112,52 @@ class LexiconFlutterService implements LexiconCoreService {
   static bool get isModelPreloaded => _instance?._modelLoaded ?? false;
 
   /// Preload the default model at app startup.
-  /// Call this after initialize() to eagerly load the model.
-  static Future<void> preloadModel() async {
+  /// Call this after initialize() to eagerly load the model into cache.
+  /// Returns the load time in milliseconds (0 if already cached).
+  static Future<int> preloadModel() async {
     if (!_initialized) {
       debugPrint('[LexiconFlutterService] Cannot preload - not initialized');
-      return;
+      return -1;
     }
+
     final service = LexiconFlutterService();
-    await service.loadDefaultModel();
+
+    // Ensure model files are copied from assets to filesystem
+    final modelDir = await service._ensureSherpaModelReady();
+
+    // Use the new preload API which caches the model globally
+    final loadTimeMs = await api.preloadSherpaModel(modelPath: modelDir);
+    final loadTime = loadTimeMs.toInt();
+
+    if (loadTime == 0) {
+      debugPrint('[LexiconFlutterService] Model loaded from cache (instant)');
+    } else {
+      debugPrint('[LexiconFlutterService] Model preloaded in ${loadTime}ms');
+    }
+
+    // Create the SherpaTranscriber instance and connect to cached model
+    // This should be instant (0ms) since model is now cached
+    service._sherpaTranscriber ??= await api.SherpaTranscriber.newInstance();
+    final instanceLoadTime = await service._sherpaTranscriber!.loadModel(modelDir: modelDir);
+    debugPrint('[LexiconFlutterService] Transcriber instance ready (${instanceLoadTime.toInt()}ms)');
+
+    service._modelLoaded = true;
+
+    return loadTime;
+  }
+
+  /// Handle low memory warning from OS.
+  /// Call this from WidgetsBindingObserver.didHaveMemoryPressure().
+  static void handleMemoryPressure() {
+    api.onLowMemory();
+    debugPrint('[LexiconFlutterService] Cleared model cache due to memory pressure');
+    // Mark model as not loaded so it will be reloaded on next use
+    _instance?._modelLoaded = false;
+  }
+
+  /// Get current cache statistics.
+  static rust.CacheStats getCacheStats() {
+    return api.getCacheStats();
   }
 
   /// Get the data directory path.
@@ -121,12 +167,19 @@ class LexiconFlutterService implements LexiconCoreService {
   static String? get modelDir => _modelDir;
 
   /// Load the transcription model from a directory path (sherpa-onnx model).
-  Future<void> loadModel(String modelDir) async {
+  /// Returns load time in ms (0 if loaded from cache).
+  Future<int> loadModel(String modelDir) async {
     try {
-      _sherpaTranscriber ??= await SherpaTranscriber.newInstance();
-      await _sherpaTranscriber!.loadModel(modelDir: modelDir);
+      _sherpaTranscriber ??= await api.SherpaTranscriber.newInstance();
+      final loadTimeMs = await _sherpaTranscriber!.loadModel(modelDir: modelDir);
+      final loadTime = loadTimeMs.toInt();
       _modelLoaded = true;
-      _log('Sherpa model loaded successfully from: $modelDir');
+      if (loadTime == 0) {
+        _log('Sherpa model loaded from cache: $modelDir');
+      } else {
+        _log('Sherpa model loaded in ${loadTime}ms from: $modelDir');
+      }
+      return loadTime;
     } on LexiconFlutterError catch (e) {
       _logError('Failed to load model: $e');
       rethrow;
@@ -193,10 +246,11 @@ class LexiconFlutterService implements LexiconCoreService {
     await modelDirObj.create(recursive: true);
 
     // List of model files to copy from assets
+    // Using .ort (ONNX Runtime optimized) format for ~10x faster loading
     final modelFiles = [
-      'encoder-epoch-30-avg-1.int8.onnx',
-      'decoder-epoch-30-avg-1.int8.onnx',
-      'joiner-epoch-30-avg-1.int8.onnx',
+      'encoder-epoch-30-avg-1.int8.ort',
+      'decoder-epoch-30-avg-1.int8.ort',
+      'joiner-epoch-30-avg-1.int8.ort',
       'tokens.txt',
     ];
 

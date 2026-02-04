@@ -3,16 +3,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/service_providers.dart';
+import 'services/lexicon_flutter_service.dart';
 
 /// Root application widget for Lexicon Mobile.
 ///
 /// Configures Material 3 theming and GoRouter navigation.
 /// Shows a loading screen while the STT model preloads.
-class LexiconApp extends ConsumerWidget {
+/// Handles memory pressure to clear model cache when OS signals low memory.
+class LexiconApp extends ConsumerStatefulWidget {
   const LexiconApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LexiconApp> createState() => _LexiconAppState();
+}
+
+class _LexiconAppState extends ConsumerState<LexiconApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    // Clear model cache when OS signals low memory
+    LexiconFlutterService.handleMemoryPressure();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final modelPreload = ref.watch(modelPreloadProvider);
 
     return MaterialApp(
