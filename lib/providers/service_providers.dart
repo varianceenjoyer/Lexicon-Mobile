@@ -20,18 +20,12 @@ final modelPreloadProvider = FutureProvider<bool>((ref) async {
 
   try {
     final loadTimeMs = await LexiconFlutterService.preloadModel();
-    if (loadTimeMs == 0) {
-      debugPrint('[modelPreloadProvider] Model loaded from cache (instant)');
-    } else if (loadTimeMs > 0) {
-      debugPrint('[modelPreloadProvider] Model preloaded in ${loadTimeMs}ms');
+    if (loadTimeMs > 0) {
+      debugPrint('[modelPreloadProvider] Model loaded in ${loadTimeMs}ms');
     } else {
       debugPrint('[modelPreloadProvider] Model preload skipped (not initialized)');
       return false;
     }
-
-    // Log cache stats
-    final stats = LexiconFlutterService.getCacheStats();
-    debugPrint('[modelPreloadProvider] Cache: ${stats.totalBytes ~/ BigInt.from(1024 * 1024)}MB / ${stats.maxBytes ~/ BigInt.from(1024 * 1024)}MB, sherpa=${stats.sherpaCached}');
 
     return true;
   } catch (e) {
