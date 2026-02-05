@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/service_providers.dart';
+import 'providers/settings_provider.dart';
 import 'services/lexicon_flutter_service.dart';
 
 /// Root application widget for Lexicon Mobile.
@@ -40,12 +41,14 @@ class _LexiconAppState extends ConsumerState<LexiconApp>
   @override
   Widget build(BuildContext context) {
     final modelPreload = ref.watch(modelPreloadProvider);
+    final themePreset = ref.watch(themePresetProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp(
       title: 'Lexicon',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      theme: AppTheme.light(themePreset),
+      darkTheme: AppTheme.dark(themePreset),
+      themeMode: themeMode,
       debugShowCheckedModeBanner: false,
       home: modelPreload.when(
         data: (_) => const _LoadedApp(),
@@ -63,12 +66,14 @@ class _LoadedApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+    final themePreset = ref.watch(themePresetProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
       title: 'Lexicon',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      theme: AppTheme.light(themePreset),
+      darkTheme: AppTheme.dark(themePreset),
+      themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );
