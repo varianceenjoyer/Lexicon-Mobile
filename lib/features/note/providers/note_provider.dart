@@ -90,6 +90,9 @@ class NoteNotifier extends StateNotifier<NoteState> {
   /// Debounce duration for segment updates (50ms provides good balance).
   static const _debounceMs = 50;
 
+  /// Guard against concurrent startRecording calls.
+  bool _isStartingRecording = false;
+
   NoteNotifier(this._ref) : super(const NoteState());
 
   LexiconCoreService get _lexiconCore => _ref.read(lexiconCoreProvider);
@@ -124,9 +127,29 @@ class NoteNotifier extends StateNotifier<NoteState> {
     );
   }
 
+  /// Clean up audio subscriptions and stop capture if active.
+  Future<void> _cleanupAudio() async {
+    await _audioSubscription?.cancel();
+    _audioSubscription = null;
+    await _audioLevelSubscription?.cancel();
+    _audioLevelSubscription = null;
+
+    final audioService = _ref.read(audioCaptureProvider);
+    if (audioService.isRecording) {
+      await audioService.stop();
+    }
+  }
+
   /// Start a new recording session.
   Future<void> startRecording() async {
+    // Guard against concurrent calls
+    if (_isStartingRecording) return;
+    _isStartingRecording = true;
+
     try {
+      // Clean up any lingering audio state from previous recording
+      await _cleanupAudio();
+
       // Request permission
       final audioService = _ref.read(audioCaptureProvider);
       final hasPermission = await audioService.requestPermission();
@@ -185,6 +208,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
         mode: NoteViewMode.error,
         errorMessage: 'Failed to start recording: $e',
       );
+    } finally {
+      _isStartingRecording = false;
     }
   }
 
@@ -216,13 +241,8 @@ class NoteNotifier extends StateNotifier<NoteState> {
     state = state.copyWith(mode: NoteViewMode.processing);
 
     try {
-      // Stop audio capture
-      final audioService = _ref.read(audioCaptureProvider);
-      await audioService.stop();
-      await _audioSubscription?.cancel();
-      _audioSubscription = null;
-      await _audioLevelSubscription?.cancel();
-      _audioLevelSubscription = null;
+      // Stop audio capture and clean up subscriptions
+      await _cleanupAudio();
 
       // Flush any pending segments before stopping transcription
       _segmentDebounce?.cancel();
@@ -335,6 +355,12 @@ class NoteNotifier extends StateNotifier<NoteState> {
 
   /// Load existing session.
   Future<void> loadSession(SessionId id) async {
+    // Clean up any active recording before loading
+    await _cleanupAudio();
+    _segmentDebounce?.cancel();
+    _pendingSegments.clear();
+    _ref.read(appStateProvider.notifier).setRecording(false);
+
     try {
       final session = await _lexiconCore.getSession(id);
       if (session == null) {
