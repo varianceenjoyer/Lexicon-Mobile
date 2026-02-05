@@ -15,7 +15,7 @@ import '../src/rust/types.dart' as rust;
 import 'lexicon_core_service.dart';
 
 /// Default sherpa model directory name.
-const String kDefaultSherpaModelDir = 'sherpa-onnx-zipformer-gigaspeech-2023-12-12';
+const String kDefaultSherpaModelDir = 'sherpa-onnx-zipformer-en-libriheavy-20230926-large';
 
 /// Asset path for the bundled sherpa model directory.
 const String kSherpaModelAssetPath = 'assets/models/sherpa/$kDefaultSherpaModelDir';
@@ -220,9 +220,9 @@ class LexiconFlutterService implements LexiconCoreService {
     // List of model files to copy from assets
     // Using .ort (ONNX Runtime optimized) format for ~10x faster loading
     final modelFiles = [
-      'encoder-epoch-30-avg-1.int8.ort',
-      'decoder-epoch-30-avg-1.int8.ort',
-      'joiner-epoch-30-avg-1.int8.ort',
+      'encoder-epoch-16-avg-3.int8.ort',
+      'decoder-epoch-16-avg-3.int8.ort',
+      'joiner-epoch-16-avg-3.int8.ort',
       'tokens.txt',
     ];
 

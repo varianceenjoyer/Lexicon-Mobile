@@ -61,5 +61,5 @@ flutter:
 
   assets:
     # STT model (sherpa-onnx ZipFormer) - Whisper model removed to reduce APK size
-    - assets/models/sherpa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/
+    - assets/models/sherpa/sherpa-onnx-zipformer-en-libriheavy-20230926-large/
     - assets/audio/
