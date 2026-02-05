@@ -6,7 +6,7 @@ import 'title_edit_dialog.dart';
 class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final ValueChanged<String> onTitleEdit;
-  final VoidCallback? onExport;
+  final VoidCallback? onSave;
   final VoidCallback? onClearText;
   final VoidCallback? onAutoTest;
   final VoidCallback? onDelete;
@@ -14,7 +14,7 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
   const NoteAppBar({
     this.title,
     required this.onTitleEdit,
-    this.onExport,
+    this.onSave,
     this.onClearText,
     this.onAutoTest,
     this.onDelete,
@@ -60,10 +60,10 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             const PopupMenuItem(
-              value: 'export',
+              value: 'save',
               child: ListTile(
-                leading: Icon(Icons.share),
-                title: Text('Export'),
+                leading: Icon(Icons.save),
+                title: Text('Save'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),
@@ -119,8 +119,8 @@ class NoteAppBar extends StatelessWidget implements PreferredSizeWidget {
       case 'rename':
         _showTitleEditor(context);
         break;
-      case 'export':
-        onExport?.call();
+      case 'save':
+        onSave?.call();
         break;
       case 'clear':
         _confirmClearText(context);

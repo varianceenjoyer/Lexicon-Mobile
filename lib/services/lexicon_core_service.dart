@@ -55,6 +55,9 @@ abstract class LexiconCoreService {
   /// Search transcriptions using full-text search.
   Future<List<SearchResult>> searchTranscriptions(String query);
 
+  /// Update the segments for a session.
+  Future<void> updateSessionSegments(SessionId id, List<Segment> segments);
+
   /// Update audio processing settings.
   void updateSettings({double? silenceThreshold, int? chunkSizeMs});
 }

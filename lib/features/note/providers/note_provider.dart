@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/wav_reader.dart';
 import '../../../providers/app_state_provider.dart';
@@ -137,10 +138,13 @@ class NoteNotifier extends StateNotifier<NoteState> {
         return;
       }
 
-      // Create session
-      final sessionId = await _lexiconCore.createSession(
-        const SessionConfig(viewType: ViewType.note),
-      );
+      // Reuse existing session or create a new one
+      var sessionId = state.sessionId;
+      if (sessionId == null) {
+        sessionId = await _lexiconCore.createSession(
+          const SessionConfig(viewType: ViewType.note),
+        );
+      }
 
       // Start transcription
       final handle = await _lexiconCore.startTranscription(
@@ -290,14 +294,39 @@ class NoteNotifier extends StateNotifier<NoteState> {
     await ttsService.seek(position);
   }
 
-  /// Save current session.
+  /// Save current session (segments + title).
   Future<void> saveSession() async {
-    if (state.sessionId == null) return;
-
     try {
-      await _lexiconCore.renameSession(state.sessionId!, state.title);
-      state = state.copyWith(isEdited: false);
+      // Create session if none exists
+      var sessionId = state.sessionId;
+      if (sessionId == null) {
+        sessionId = await _lexiconCore.createSession(
+          SessionConfig(title: state.title, viewType: ViewType.note),
+        );
+        state = state.copyWith(sessionId: sessionId);
+      }
+
+      // If text was manually edited and segments are empty/stale,
+      // create a single segment from the current text
+      var segments = state.segments;
+      if (state.transcriptionText.isNotEmpty && segments.isEmpty) {
+        segments = [
+          Segment(
+            id: const Uuid().v4(),
+            text: state.transcriptionText,
+            startMs: 0,
+            endMs: 0,
+          ),
+        ];
+      }
+
+      await _lexiconCore.renameSession(sessionId, state.title);
+      await _lexiconCore.updateSessionSegments(sessionId, segments);
+      state = state.copyWith(isEdited: false, segments: segments);
+      debugPrint('[Note] Saved session ${sessionId.value}: '
+          '${segments.length} segments, title="${state.title}"');
     } catch (e) {
+      debugPrint('[Note] Save failed: $e');
       state = state.copyWith(
         errorMessage: 'Failed to save: $e',
       );
@@ -318,7 +347,7 @@ class NoteNotifier extends StateNotifier<NoteState> {
 
       final text = session.segments.map((s) => s.text).join(' ');
       state = NoteState(
-        mode: NoteViewMode.playbackReady,
+        mode: NoteViewMode.idle,
         sessionId: id,
         title: session.title,
         transcriptionText: text,

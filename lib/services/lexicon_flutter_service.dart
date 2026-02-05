@@ -307,6 +307,23 @@ class LexiconFlutterService implements LexiconCoreService {
   }
 
   @override
+  Future<void> updateSessionSegments(SessionId id, List<Segment> segments) async {
+    final session = _sessions[id.value];
+    if (session != null) {
+      _sessions[id.value] = Session(
+        id: session.id,
+        title: session.title,
+        createdAt: session.createdAt,
+        updatedAt: DateTime.now(),
+        duration: session.duration,
+        sourceType: session.sourceType,
+        viewType: session.viewType,
+        segments: segments,
+      );
+    }
+  }
+
+  @override
   Future<TranscriptionHandle> startTranscription(
     SessionId sessionId,
     TranscriptionConfig config,

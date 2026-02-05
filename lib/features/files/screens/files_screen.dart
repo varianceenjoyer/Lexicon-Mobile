@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/router/navigation_extensions.dart';
 import '../../../services/lexicon_core_service.dart';
+import '../../note/providers/note_provider.dart';
 import '../providers/files_provider.dart';
 import '../providers/import_provider.dart';
 import '../widgets/file_list.dart';
@@ -211,9 +212,9 @@ class FilesScreen extends ConsumerWidget {
 
   void _openSession(
       BuildContext context, WidgetRef ref, SessionId id, ViewType type) {
-    // TODO: Load session in appropriate view and navigate
     switch (type) {
       case ViewType.note:
+        ref.read(noteProvider.notifier).loadSession(id);
         context.goToNote();
         break;
       case ViewType.chat:

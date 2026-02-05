@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/service_providers.dart';
 import '../../../services/tts_playback_service.dart';
+import '../../files/providers/files_provider.dart';
 import '../providers/note_provider.dart';
 import '../widgets/audio_level_meter.dart';
 import '../widgets/note_app_bar.dart';
@@ -74,6 +75,18 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
       appBar: NoteAppBar(
         title: noteState.title,
         onTitleEdit: (title) => ref.read(noteProvider.notifier).updateTitle(title),
+        onSave: () async {
+          await ref.read(noteProvider.notifier).saveSession();
+          ref.read(filesProvider.notifier).refresh();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Note saved'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        },
         onClearText: () {
           ref.read(noteProvider.notifier).clearText();
         },

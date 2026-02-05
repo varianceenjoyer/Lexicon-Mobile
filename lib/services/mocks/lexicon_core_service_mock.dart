@@ -139,6 +139,25 @@ class LexiconCoreServiceMock implements LexiconCoreService {
     }
   }
 
+  @override
+  Future<void> updateSessionSegments(SessionId id, List<Segment> segments) async {
+    await _simulateDelay();
+    final index = _sessions.indexWhere((s) => s.id == id);
+    if (index != -1) {
+      final session = _sessions[index];
+      _sessions[index] = Session(
+        id: session.id,
+        title: session.title,
+        createdAt: session.createdAt,
+        updatedAt: DateTime.now(),
+        duration: session.duration,
+        sourceType: session.sourceType,
+        viewType: session.viewType,
+        segments: segments,
+      );
+    }
+  }
+
   // Track audio processing state for mock transcription
   final Map<String, _MockTranscriptionState> _transcriptionStates = {};
 
