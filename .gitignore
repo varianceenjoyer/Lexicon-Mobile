@@ -7,6 +7,32 @@ android/app/src/main/jniLibs/armeabi-v7a
 android/app/src/main/jniLibs/x86_64
 */models/sherpa
 
+# Python
+.venv/
+venv/
+env/
+.env
+.Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+*.egg
+
 # IDEs and editors
 .codebuddy/
 .c9/
