@@ -117,6 +117,34 @@ class Session {
     required this.viewType,
     required this.segments,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id.value,
+        'title': title,
+        'createdAt': createdAt.millisecondsSinceEpoch,
+        'updatedAt': updatedAt.millisecondsSinceEpoch,
+        'duration': duration?.inMilliseconds,
+        'sourceType': sourceType,
+        'viewType': viewType.name,
+        'segments': segments.map((s) => s.toJson()).toList(),
+      };
+
+  factory Session.fromJson(Map<String, dynamic> json) => Session(
+        id: SessionId(json['id'] as String),
+        title: json['title'] as String,
+        createdAt:
+            DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+        updatedAt:
+            DateTime.fromMillisecondsSinceEpoch(json['updatedAt'] as int),
+        duration: json['duration'] != null
+            ? Duration(milliseconds: json['duration'] as int)
+            : null,
+        sourceType: json['sourceType'] as String?,
+        viewType: ViewType.values.byName(json['viewType'] as String),
+        segments: (json['segments'] as List)
+            .map((s) => Segment.fromJson(s as Map<String, dynamic>))
+            .toList(),
+      );
 }
 
 /// Session summary for list views.
@@ -175,6 +203,24 @@ class Segment {
     required this.endMs,
     this.confidence,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'speakerId': speakerId,
+        'text': text,
+        'startMs': startMs,
+        'endMs': endMs,
+        'confidence': confidence,
+      };
+
+  factory Segment.fromJson(Map<String, dynamic> json) => Segment(
+        id: json['id'] as String,
+        speakerId: json['speakerId'] as int?,
+        text: json['text'] as String,
+        startMs: json['startMs'] as int,
+        endMs: json['endMs'] as int,
+        confidence: (json['confidence'] as num?)?.toDouble(),
+      );
 }
 
 /// Audio stream handle for TTS.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' show sqrt;
 
@@ -43,8 +44,9 @@ class LexiconFlutterService implements LexiconCoreService {
   api.SherpaTranscriber? _sherpaTranscriber;
   bool _modelLoaded = false;
 
-  // Session storage (in-memory for now, will use SQLite later)
+  // Session storage (in-memory, persisted to JSON file)
   final Map<String, Session> _sessions = {};
+  bool _sessionsLoaded = false;
 
   // Active transcription state
   final Map<String, _ActiveTranscription> _activeTranscriptions = {};
@@ -62,6 +64,42 @@ class LexiconFlutterService implements LexiconCoreService {
     if (chunkSizeMs != null) {
       _chunkSizeMs = chunkSizeMs.clamp(1000, 5000);
       _log('Updated chunk size: ${_chunkSizeMs}ms');
+    }
+  }
+
+  /// File path for persisted sessions.
+  static String get _sessionsFilePath => '$_dataDir/sessions.json';
+
+  /// Load sessions from disk into memory.
+  Future<void> _loadSessions() async {
+    if (_sessionsLoaded || _dataDir == null) return;
+    _sessionsLoaded = true;
+
+    final file = File(_sessionsFilePath);
+    if (!await file.exists()) return;
+
+    try {
+      final jsonStr = await file.readAsString();
+      final list = jsonDecode(jsonStr) as List;
+      for (final item in list) {
+        final session = Session.fromJson(item as Map<String, dynamic>);
+        _sessions[session.id.value] = session;
+      }
+      _log('Loaded ${_sessions.length} sessions from disk');
+    } catch (e) {
+      _logError('Failed to load sessions: $e');
+    }
+  }
+
+  /// Persist sessions to disk.
+  Future<void> _saveSessions() async {
+    if (_dataDir == null) return;
+
+    try {
+      final list = _sessions.values.map((s) => s.toJson()).toList();
+      await File(_sessionsFilePath).writeAsString(jsonEncode(list));
+    } catch (e) {
+      _logError('Failed to save sessions: $e');
     }
   }
 
@@ -95,6 +133,9 @@ class LexiconFlutterService implements LexiconCoreService {
 
     _initialized = true;
     debugPrint('[LexiconFlutterService] Initialization complete');
+
+    // Load persisted sessions
+    await LexiconFlutterService()._loadSessions();
   }
 
   /// Check if the library is initialized.
@@ -261,6 +302,7 @@ class LexiconFlutterService implements LexiconCoreService {
       viewType: config.viewType,
       segments: [],
     );
+    await _saveSessions();
     return id;
   }
 
@@ -287,6 +329,7 @@ class LexiconFlutterService implements LexiconCoreService {
   @override
   Future<void> deleteSession(SessionId id) async {
     _sessions.remove(id.value);
+    await _saveSessions();
   }
 
   @override
@@ -303,6 +346,7 @@ class LexiconFlutterService implements LexiconCoreService {
         viewType: session.viewType,
         segments: session.segments,
       );
+      await _saveSessions();
     }
   }
 
@@ -320,6 +364,7 @@ class LexiconFlutterService implements LexiconCoreService {
         viewType: session.viewType,
         segments: segments,
       );
+      await _saveSessions();
     }
   }
 
