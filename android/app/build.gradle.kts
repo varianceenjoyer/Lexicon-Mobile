@@ -37,6 +37,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    // Prevent compression of large ONNX model files bundled in assets
+    aaptOptions {
+        noCompress += listOf("onnx", "onnx_data")
+    }
 }
 
 flutter {

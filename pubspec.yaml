@@ -60,6 +60,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    # STT model (sherpa-onnx ZipFormer) - Whisper model removed to reduce APK size
-    - assets/models/sherpa/sherpa-onnx-zipformer-en-libriheavy-20230926-large/
+    # STT model (Parakeet CTC - FastConformer via ONNX Runtime, dynamic INT8)
+    - assets/models/parakeet/parakeet-ctc-0.6b/model_int8_qdq.onnx
+    - assets/models/parakeet/parakeet-ctc-0.6b/model_int8_qdq.onnx_data
+    - assets/models/parakeet/parakeet-ctc-0.6b/tokenizer.json
     - assets/audio/

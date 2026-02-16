@@ -6,6 +6,7 @@ android/app/src/main/jniLibs/arm64-v8a
 android/app/src/main/jniLibs/armeabi-v7a
 android/app/src/main/jniLibs/x86_64
 */models/sherpa
+*/models/parakeet
 
 # Python
 .venv/

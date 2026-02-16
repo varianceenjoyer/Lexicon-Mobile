@@ -15,11 +15,11 @@ import '../src/rust/frb_generated.dart';
 import '../src/rust/types.dart' as rust;
 import 'lexicon_core_service.dart';
 
-/// Default sherpa model directory name.
-const String kDefaultSherpaModelDir = 'sherpa-onnx-zipformer-en-libriheavy-20230926-large';
+/// Default Parakeet model directory name.
+const String kDefaultParakeetModelDir = 'parakeet-ctc-0.6b';
 
-/// Asset path for the bundled sherpa model directory.
-const String kSherpaModelAssetPath = 'assets/models/sherpa/$kDefaultSherpaModelDir';
+/// Asset path for the bundled Parakeet model directory.
+const String kParakeetModelAssetPath = 'assets/models/parakeet/$kDefaultParakeetModelDir';
 
 /// Real implementation of LexiconCoreService using native Lexicon library.
 class LexiconFlutterService implements LexiconCoreService {
@@ -40,8 +40,8 @@ class LexiconFlutterService implements LexiconCoreService {
 
   final _uuid = const Uuid();
 
-  // Sherpa transcriber for real-time transcription (faster than Whisper)
-  api.SherpaTranscriber? _sherpaTranscriber;
+  // Parakeet transcriber for STT (FastConformer CTC via ONNX Runtime)
+  api.ParakeetTranscriber? _parakeetTranscriber;
   bool _modelLoaded = false;
 
   // Session storage (in-memory, persisted to JSON file)
@@ -52,7 +52,7 @@ class LexiconFlutterService implements LexiconCoreService {
   final Map<String, _ActiveTranscription> _activeTranscriptions = {};
 
   // Configurable settings (updated via updateSettings)
-  double _silenceThreshold = 0.0; // Disabled by default - sherpa handles silence well
+  double _silenceThreshold = 0.0; // Disabled by default - parakeet handles silence well
   int _chunkSizeMs = 3000; // Default 3 seconds for offline model accuracy
 
   @override
@@ -156,13 +156,13 @@ class LexiconFlutterService implements LexiconCoreService {
     final service = LexiconFlutterService();
 
     // Ensure model files are copied from assets to filesystem
-    final modelDir = await service._ensureSherpaModelReady();
+    final modelDir = await service._ensureParakeetModelReady();
 
-    // Create the SherpaTranscriber instance and load the model directly
-    service._sherpaTranscriber ??= await api.SherpaTranscriber.newInstance();
-    final loadTimeMs = await service._sherpaTranscriber!.loadModel(modelDir: modelDir);
+    // Create the ParakeetTranscriber instance and load the model directly
+    service._parakeetTranscriber ??= await api.ParakeetTranscriber.newInstance();
+    final loadTimeMs = await service._parakeetTranscriber!.loadModel(modelDir: modelDir);
     final loadTime = loadTimeMs.toInt();
-    debugPrint('[LexiconFlutterService] Model loaded in ${loadTime}ms');
+    debugPrint('[LexiconFlutterService] Parakeet model loaded in ${loadTime}ms');
 
     service._modelLoaded = true;
 
@@ -183,15 +183,15 @@ class LexiconFlutterService implements LexiconCoreService {
   /// Get the model directory path.
   static String? get modelDir => _modelDir;
 
-  /// Load the transcription model from a directory path (sherpa-onnx model).
+  /// Load the transcription model from a directory path (Parakeet CTC model).
   /// Returns load time in ms.
   Future<int> loadModel(String modelDir) async {
     try {
-      _sherpaTranscriber ??= await api.SherpaTranscriber.newInstance();
-      final loadTimeMs = await _sherpaTranscriber!.loadModel(modelDir: modelDir);
+      _parakeetTranscriber ??= await api.ParakeetTranscriber.newInstance();
+      final loadTimeMs = await _parakeetTranscriber!.loadModel(modelDir: modelDir);
       final loadTime = loadTimeMs.toInt();
       _modelLoaded = true;
-      _log('Sherpa model loaded in ${loadTime}ms from: $modelDir');
+      _log('Parakeet model loaded in ${loadTime}ms from: $modelDir');
       return loadTime;
     } on LexiconFlutterError catch (e) {
       _logError('Failed to load model: $e');
@@ -199,25 +199,23 @@ class LexiconFlutterService implements LexiconCoreService {
     }
   }
 
-  /// Load the default bundled sherpa model from assets.
+  /// Load the default bundled Parakeet model from assets.
   ///
-  /// The sherpa model is a directory containing encoder, decoder, joiner, and tokens files.
-  /// These are bundled in assets and loaded directly from the asset path.
+  /// The Parakeet model is a directory containing model.onnx, model.onnx_data,
+  /// and tokenizer.json. These are bundled in assets and copied to filesystem.
   Future<void> loadDefaultModel() async {
     if (_modelLoaded) return;
 
     try {
-      _log('Loading default sherpa model...');
-      // Sherpa model is a directory - we pass the asset path directly
-      // The native code will handle loading from the app's asset bundle
-      final modelDir = await _ensureSherpaModelReady();
+      _log('Loading default Parakeet model...');
+      final modelDir = await _ensureParakeetModelReady();
       await loadModel(modelDir);
     } on LexiconFlutterError catch (e) {
       // Handle specific Lexicon errors
       if (e is LexiconFlutterError_ModelLoadFailed) {
-        _logError('Sherpa model load failed: $e');
+        _logError('Parakeet model load failed: $e');
         // Re-copy model directory and retry
-        final modelDir = await _ensureSherpaModelReady(forceRecopy: true);
+        final modelDir = await _ensureParakeetModelReady(forceRecopy: true);
         await loadModel(modelDir);
       } else {
         rethrow;
@@ -225,31 +223,27 @@ class LexiconFlutterService implements LexiconCoreService {
     }
   }
 
-  /// Ensure the sherpa model directory is ready in the filesystem.
+  /// Ensure the Parakeet model directory is ready in the filesystem.
   ///
   /// Copies all model files from assets to the filesystem if not already present.
   /// Returns the path to the model directory.
-  Future<String> _ensureSherpaModelReady({bool forceRecopy = false}) async {
-    final sherpaModelDir = '$_modelDir/sherpa/$kDefaultSherpaModelDir';
-    final modelDirObj = Directory(sherpaModelDir);
+  Future<String> _ensureParakeetModelReady({bool forceRecopy = false}) async {
+    final parakeetModelDir = '$_modelDir/parakeet/$kDefaultParakeetModelDir';
+    final modelDirObj = Directory(parakeetModelDir);
 
     // Check if model directory exists and has required files
-    final requiredFiles = ['tokens.txt'];
     bool modelComplete = await modelDirObj.exists();
 
     if (modelComplete && !forceRecopy) {
-      // Verify at least tokens.txt exists
-      for (final file in requiredFiles) {
-        if (!await File('$sherpaModelDir/$file').exists()) {
-          modelComplete = false;
-          break;
-        }
+      // Verify tokenizer.json exists (required for parakeet-rs)
+      if (!await File('$parakeetModelDir/tokenizer.json').exists()) {
+        modelComplete = false;
       }
     }
 
     if (modelComplete && !forceRecopy) {
-      _log('Sherpa model already present at: $sherpaModelDir');
-      return sherpaModelDir;
+      _log('Parakeet model already present at: $parakeetModelDir');
+      return parakeetModelDir;
     }
 
     // Create model directory
@@ -258,37 +252,49 @@ class LexiconFlutterService implements LexiconCoreService {
     }
     await modelDirObj.create(recursive: true);
 
-    // List of model files to copy from assets
-    // Using .ort (ONNX Runtime optimized) format for ~10x faster loading
-    final modelFiles = [
-      'encoder-epoch-16-avg-3.int8.ort',
-      'decoder-epoch-16-avg-3.int8.ort',
-      'joiner-epoch-16-avg-3.int8.ort',
-      'tokens.txt',
-    ];
+    // Parakeet CTC model files - try quantized first, fall back to fp32
+    // The build script may produce either variant
+    final modelFiles = <String>[];
 
-    _log('Copying sherpa model files from assets...');
+    // Check which model variant is bundled in assets
+    try {
+      await rootBundle.load('$kParakeetModelAssetPath/model_int8_qdq.onnx');
+      // Quantized INT8 variant available
+      modelFiles.addAll([
+        'model_int8_qdq.onnx',
+        'model_int8_qdq.onnx_data',
+        'tokenizer.json',
+      ]);
+    } catch (_) {
+      // Fall back to fp32 variant
+      modelFiles.addAll([
+        'model.onnx',
+        'model.onnx_data',
+        'tokenizer.json',
+      ]);
+    }
+
+    _log('Copying Parakeet model files from assets...');
     for (final fileName in modelFiles) {
       try {
-        final assetPath = '$kSherpaModelAssetPath/$fileName';
+        final assetPath = '$kParakeetModelAssetPath/$fileName';
         final data = await rootBundle.load(assetPath);
-        final destPath = '$sherpaModelDir/$fileName';
+        final destPath = '$parakeetModelDir/$fileName';
         await File(destPath).writeAsBytes(
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         );
         _log('  Copied: $fileName');
       } catch (e) {
         _logError('  Failed to copy $fileName: $e');
-        // Continue - some files may be optional (like non-int8 versions)
       }
     }
 
-    _log('Sherpa model ready at: $sherpaModelDir');
-    return sherpaModelDir;
+    _log('Parakeet model ready at: $parakeetModelDir');
+    return parakeetModelDir;
   }
 
   /// Check if model is loaded and ready.
-  bool get isModelLoaded => _modelLoaded && (_sherpaTranscriber?.isModelLoaded() ?? false);
+  bool get isModelLoaded => _modelLoaded && (_parakeetTranscriber?.isModelLoaded() ?? false);
 
   @override
   Future<SessionId> createSession(SessionConfig config) async {
@@ -395,7 +401,7 @@ class LexiconFlutterService implements LexiconCoreService {
     final pipelineStart = DateTime.now();
 
     final active = _activeTranscriptions[handle.value];
-    if (active == null || _sherpaTranscriber == null) {
+    if (active == null || _parakeetTranscriber == null) {
       // Silently return - this happens during startup before session is ready
       return [];
     }
@@ -506,7 +512,7 @@ class LexiconFlutterService implements LexiconCoreService {
     final conversionDuration = DateTime.now().difference(conversionStart);
     active.totalConversionTime += conversionDuration;
 
-    // Process through sherpa transcriber (batch mode - faster than streaming whisper)
+    // Process through Parakeet transcriber (batch CTC mode)
     const config = rust.TranscriptionConfig(
       language: null, // Auto-detect
       translate: false,
@@ -519,8 +525,8 @@ class LexiconFlutterService implements LexiconCoreService {
     final ffiStart = DateTime.now();
 
     try {
-      // Sherpa transcribe expects List<int> (bytes), not AudioChunk
-      final result = await _sherpaTranscriber!.transcribe(
+      // Parakeet transcribe expects List<int> (bytes), not AudioChunk
+      final result = await _parakeetTranscriber!.transcribe(
         audioData: audioBytes,
         config: config,
       );
@@ -586,7 +592,7 @@ class LexiconFlutterService implements LexiconCoreService {
       active.logLatencySummary();
 
       // Process any remaining buffered audio from front buffer (minimum 100ms = 1600 samples)
-      if (active.audioBuffer.frontAvailable >= 1600 && _sherpaTranscriber != null) {
+      if (active.audioBuffer.frontAvailable >= 1600 && _parakeetTranscriber != null) {
         active.audioBuffer.swap();
         final remainingSamples = active.audioBuffer.readBack();
         final audioBytes = _samplesToF32Bytes(remainingSamples);
@@ -598,7 +604,7 @@ class LexiconFlutterService implements LexiconCoreService {
           temperature: 0.0,
         );
         try {
-          await _sherpaTranscriber!.transcribe(audioData: audioBytes, config: config);
+          await _parakeetTranscriber!.transcribe(audioData: audioBytes, config: config);
           _log('Processed final ${remainingSamples.length} samples');
         } catch (e) {
           _logError('Error processing final audio: $e');
@@ -609,14 +615,14 @@ class LexiconFlutterService implements LexiconCoreService {
       if (active.droppedSamples > 0) {
         _logError('Session ended with ${active.droppedSamples} dropped samples');
       }
-      // Note: SherpaTranscriber doesn't have a stop() method - it's batch-based
+      // Note: ParakeetTranscriber doesn't have a stop() method - it's batch-based
     }
   }
 
   @override
   Future<void> cancelTranscription(TranscriptionHandle handle) async {
     _activeTranscriptions.remove(handle.value);
-    // Note: SherpaTranscriber doesn't have a stop() method - it's batch-based
+    // Note: ParakeetTranscriber doesn't have a stop() method - it's batch-based
   }
 
   @override
