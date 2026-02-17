@@ -59,7 +59,7 @@ abstract class LexiconCoreService {
   Future<void> updateSessionSegments(SessionId id, List<Segment> segments);
 
   /// Update audio processing settings.
-  void updateSettings({double? silenceThreshold, int? chunkSizeMs});
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs, bool? noiseReduction});
 }
 
 /// Session identifier

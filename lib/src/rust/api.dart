@@ -104,6 +104,9 @@ abstract class ParakeetTranscriber implements RustOpaqueInterface {
   /// Check if a model is loaded.
   bool isModelLoaded();
 
+  /// Check if noise reduction is currently enabled.
+  bool isNoiseReductionEnabled();
+
   /// Load a Parakeet model from a directory.
   ///
   /// Auto-detects model variant (CTC or TDT) from directory contents.
@@ -114,10 +117,18 @@ abstract class ParakeetTranscriber implements RustOpaqueInterface {
   static Future<ParakeetTranscriber> newInstance() =>
       LexiconFlutter.instance.api.crateApiParakeetTranscriberNew();
 
+  /// Enable or disable noise reduction preprocessing.
+  ///
+  /// When enabled, audio is denoised using RNNoise before transcription.
+  /// Off by default. Enable in noisy environments (wind, traffic, industrial).
+  /// May slightly affect accuracy in quiet settings.
+  void setNoiseReduction({required bool enabled});
+
   /// Transcribe audio data (batch mode).
   ///
   /// Audio should be raw PCM f32 samples at 16kHz mono, packed as bytes.
   /// CTC models return punctuated text; TDT models need post-processing.
+  /// When noise reduction is enabled, audio is denoised before transcription.
   Future<TranscriptionResult> transcribe(
       {required List<int> audioData, required TranscriptionConfig config});
 

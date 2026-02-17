@@ -18,6 +18,7 @@ class AudioSettingsScreen extends ConsumerWidget {
       ),
       body: ListView(
         children: [
+          _buildNoiseReductionTile(context, ref, settings),
           _buildSilenceThresholdTile(context, ref, settings),
           _buildChunkSizeTile(context, ref, settings),
           const Divider(),
@@ -25,6 +26,26 @@ class AudioSettingsScreen extends ConsumerWidget {
           _buildResetSettingsTile(context, ref),
         ],
       ),
+    );
+  }
+
+  Widget _buildNoiseReductionTile(
+    BuildContext context,
+    WidgetRef ref,
+    SettingsState settings,
+  ) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.noise_aware),
+      title: const Text('Noise Reduction'),
+      subtitle: const Text(
+        'Reduces background noise before transcription. '
+        'Enable in noisy environments (wind, traffic). '
+        'May slightly affect accuracy in quiet settings.',
+      ),
+      value: settings.noiseReduction,
+      onChanged: (value) {
+        ref.read(settingsProvider.notifier).setNoiseReduction(value);
+      },
     );
   }
 
@@ -114,7 +135,7 @@ class AudioSettingsScreen extends ConsumerWidget {
     return ListTile(
       leading: const Icon(Icons.restore),
       title: const Text('Reset Audio Settings'),
-      subtitle: const Text('Silence: Off, Chunk size: 3s'),
+      subtitle: const Text('Noise reduction: Off, Silence: Off, Chunk size: 3s'),
       onTap: () async {
         final confirmed = await showDialog<bool>(
           context: context,
@@ -122,6 +143,7 @@ class AudioSettingsScreen extends ConsumerWidget {
             title: const Text('Reset Audio Settings?'),
             content: const Text(
               'This will reset audio settings to recommended defaults:\n\n'
+              '• Noise Reduction: Off\n'
               '• Silence Filter: Off\n'
               '• Chunk Size: 3 seconds',
             ),
@@ -140,6 +162,7 @@ class AudioSettingsScreen extends ConsumerWidget {
 
         if (confirmed == true) {
           final notifier = ref.read(settingsProvider.notifier);
+          await notifier.setNoiseReduction(false);
           await notifier.setSilenceThreshold(0.0);
           await notifier.setChunkSizeMs(3000);
           if (context.mounted) {

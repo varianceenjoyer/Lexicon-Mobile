@@ -16,6 +16,10 @@ class SettingsState {
   /// Lower values provide faster (but less accurate) incremental results.
   final int chunkSizeMs;
 
+  /// Whether noise reduction (RNNoise) preprocessing is enabled.
+  /// Off by default. Enable in noisy environments (wind, traffic).
+  final bool noiseReduction;
+
   /// Selected theme color preset.
   final ThemePreset themePreset;
 
@@ -25,6 +29,7 @@ class SettingsState {
   const SettingsState({
     this.silenceThreshold = 0.0, // Disabled by default - sherpa handles silence well
     this.chunkSizeMs = 3000, // 3 seconds - gives offline model enough context
+    this.noiseReduction = false, // Off by default - model is already noise-robust
     this.themePreset = ThemePreset.ocean,
     this.themeMode = ThemeMode.system,
   });
@@ -32,12 +37,14 @@ class SettingsState {
   SettingsState copyWith({
     double? silenceThreshold,
     int? chunkSizeMs,
+    bool? noiseReduction,
     ThemePreset? themePreset,
     ThemeMode? themeMode,
   }) {
     return SettingsState(
       silenceThreshold: silenceThreshold ?? this.silenceThreshold,
       chunkSizeMs: chunkSizeMs ?? this.chunkSizeMs,
+      noiseReduction: noiseReduction ?? this.noiseReduction,
       themePreset: themePreset ?? this.themePreset,
       themeMode: themeMode ?? this.themeMode,
     );
@@ -48,6 +55,7 @@ class SettingsState {
 class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keySilenceThreshold = 'silence_threshold';
   static const _keyChunkSizeMs = 'chunk_size_ms';
+  static const _keyNoiseReduction = 'noise_reduction';
   static const _keyThemePreset = 'theme_preset';
   static const _keyThemeMode = 'theme_mode';
 
@@ -62,12 +70,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
     final silenceThreshold = _prefs?.getDouble(_keySilenceThreshold) ?? 0.0;
     final chunkSizeMs = _prefs?.getInt(_keyChunkSizeMs) ?? 3000;
+    final noiseReduction = _prefs?.getBool(_keyNoiseReduction) ?? false;
     final themePresetIndex = _prefs?.getInt(_keyThemePreset) ?? 0;
     final themeModeIndex = _prefs?.getInt(_keyThemeMode) ?? 0;
 
     state = SettingsState(
       silenceThreshold: silenceThreshold,
       chunkSizeMs: chunkSizeMs,
+      noiseReduction: noiseReduction,
       themePreset: ThemePreset.values[themePresetIndex.clamp(0, ThemePreset.values.length - 1)],
       themeMode: ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)],
     );
@@ -88,6 +98,11 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     await _prefs?.setInt(_keyChunkSizeMs, clamped);
   }
 
+  Future<void> setNoiseReduction(bool enabled) async {
+    state = state.copyWith(noiseReduction: enabled);
+    await _prefs?.setBool(_keyNoiseReduction, enabled);
+  }
+
   Future<void> setThemePreset(ThemePreset preset) async {
     state = state.copyWith(themePreset: preset);
     await _prefs?.setInt(_keyThemePreset, preset.index);
@@ -102,6 +117,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> resetToDefaults() async {
     await _prefs?.remove(_keySilenceThreshold);
     await _prefs?.remove(_keyChunkSizeMs);
+    await _prefs?.remove(_keyNoiseReduction);
     await _prefs?.remove(_keyThemePreset);
     await _prefs?.remove(_keyThemeMode);
     state = const SettingsState(); // Uses default values
@@ -121,6 +137,11 @@ final silenceThresholdProvider = Provider<double>((ref) {
 /// Provider for chunk size in milliseconds.
 final chunkSizeMsProvider = Provider<int>((ref) {
   return ref.watch(settingsProvider).chunkSizeMs;
+});
+
+/// Provider for noise reduction enabled state.
+final noiseReductionProvider = Provider<bool>((ref) {
+  return ref.watch(settingsProvider).noiseReduction;
 });
 
 /// Provider for current theme preset.

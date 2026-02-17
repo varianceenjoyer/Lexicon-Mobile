@@ -309,7 +309,7 @@ class LexiconCoreServiceMock implements LexiconCoreService {
   }
 
   @override
-  void updateSettings({double? silenceThreshold, int? chunkSizeMs}) {
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs, bool? noiseReduction}) {
     // Mock doesn't need to do anything with settings
   }
 
