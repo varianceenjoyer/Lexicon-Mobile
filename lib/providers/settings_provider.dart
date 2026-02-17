@@ -20,6 +20,10 @@ class SettingsState {
   /// Off by default. Enable in noisy environments (wind, traffic).
   final bool noiseReduction;
 
+  /// Noise reduction strength (0.0 = light, 1.0 = maximum).
+  /// Controls how aggressively background noise is removed.
+  final double noiseReductionStrength;
+
   /// Selected theme color preset.
   final ThemePreset themePreset;
 
@@ -30,6 +34,7 @@ class SettingsState {
     this.silenceThreshold = 0.0, // Disabled by default - sherpa handles silence well
     this.chunkSizeMs = 3000, // 3 seconds - gives offline model enough context
     this.noiseReduction = false, // Off by default - model is already noise-robust
+    this.noiseReductionStrength = 1.0, // Maximum denoising by default
     this.themePreset = ThemePreset.ocean,
     this.themeMode = ThemeMode.system,
   });
@@ -38,6 +43,7 @@ class SettingsState {
     double? silenceThreshold,
     int? chunkSizeMs,
     bool? noiseReduction,
+    double? noiseReductionStrength,
     ThemePreset? themePreset,
     ThemeMode? themeMode,
   }) {
@@ -45,6 +51,7 @@ class SettingsState {
       silenceThreshold: silenceThreshold ?? this.silenceThreshold,
       chunkSizeMs: chunkSizeMs ?? this.chunkSizeMs,
       noiseReduction: noiseReduction ?? this.noiseReduction,
+      noiseReductionStrength: noiseReductionStrength ?? this.noiseReductionStrength,
       themePreset: themePreset ?? this.themePreset,
       themeMode: themeMode ?? this.themeMode,
     );
@@ -56,6 +63,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keySilenceThreshold = 'silence_threshold';
   static const _keyChunkSizeMs = 'chunk_size_ms';
   static const _keyNoiseReduction = 'noise_reduction';
+  static const _keyNoiseReductionStrength = 'noise_reduction_strength';
   static const _keyThemePreset = 'theme_preset';
   static const _keyThemeMode = 'theme_mode';
 
@@ -71,6 +79,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     final silenceThreshold = _prefs?.getDouble(_keySilenceThreshold) ?? 0.0;
     final chunkSizeMs = _prefs?.getInt(_keyChunkSizeMs) ?? 3000;
     final noiseReduction = _prefs?.getBool(_keyNoiseReduction) ?? false;
+    final noiseReductionStrength = _prefs?.getDouble(_keyNoiseReductionStrength) ?? 1.0;
     final themePresetIndex = _prefs?.getInt(_keyThemePreset) ?? 0;
     final themeModeIndex = _prefs?.getInt(_keyThemeMode) ?? 0;
 
@@ -78,6 +87,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       silenceThreshold: silenceThreshold,
       chunkSizeMs: chunkSizeMs,
       noiseReduction: noiseReduction,
+      noiseReductionStrength: noiseReductionStrength,
       themePreset: ThemePreset.values[themePresetIndex.clamp(0, ThemePreset.values.length - 1)],
       themeMode: ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)],
     );
@@ -103,6 +113,12 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     await _prefs?.setBool(_keyNoiseReduction, enabled);
   }
 
+  Future<void> setNoiseReductionStrength(double value) async {
+    final clamped = value.clamp(0.0, 1.0);
+    state = state.copyWith(noiseReductionStrength: clamped);
+    await _prefs?.setDouble(_keyNoiseReductionStrength, clamped);
+  }
+
   Future<void> setThemePreset(ThemePreset preset) async {
     state = state.copyWith(themePreset: preset);
     await _prefs?.setInt(_keyThemePreset, preset.index);
@@ -118,6 +134,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     await _prefs?.remove(_keySilenceThreshold);
     await _prefs?.remove(_keyChunkSizeMs);
     await _prefs?.remove(_keyNoiseReduction);
+    await _prefs?.remove(_keyNoiseReductionStrength);
     await _prefs?.remove(_keyThemePreset);
     await _prefs?.remove(_keyThemeMode);
     state = const SettingsState(); // Uses default values
@@ -142,6 +159,11 @@ final chunkSizeMsProvider = Provider<int>((ref) {
 /// Provider for noise reduction enabled state.
 final noiseReductionProvider = Provider<bool>((ref) {
   return ref.watch(settingsProvider).noiseReduction;
+});
+
+/// Provider for noise reduction strength.
+final noiseReductionStrengthProvider = Provider<double>((ref) {
+  return ref.watch(settingsProvider).noiseReductionStrength;
 });
 
 /// Provider for current theme preset.

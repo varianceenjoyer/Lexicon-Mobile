@@ -50,6 +50,7 @@ final lexiconCoreProvider = Provider<LexiconCoreService>((ref) {
       silenceThreshold: initialSettings.silenceThreshold,
       chunkSizeMs: initialSettings.chunkSizeMs,
       noiseReduction: initialSettings.noiseReduction,
+      noiseReductionStrength: initialSettings.noiseReductionStrength,
     );
 
     // Listen for settings changes without triggering provider rebuild
@@ -59,6 +60,7 @@ final lexiconCoreProvider = Provider<LexiconCoreService>((ref) {
         silenceThreshold: next.silenceThreshold,
         chunkSizeMs: next.chunkSizeMs,
         noiseReduction: next.noiseReduction,
+        noiseReductionStrength: next.noiseReductionStrength,
       );
     });
 

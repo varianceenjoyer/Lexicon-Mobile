@@ -56,7 +56,7 @@ class LexiconFlutterService implements LexiconCoreService {
   int _chunkSizeMs = 3000; // Default 3 seconds for offline model accuracy
 
   @override
-  void updateSettings({double? silenceThreshold, int? chunkSizeMs, bool? noiseReduction}) {
+  void updateSettings({double? silenceThreshold, int? chunkSizeMs, bool? noiseReduction, double? noiseReductionStrength}) {
     if (silenceThreshold != null) {
       _silenceThreshold = silenceThreshold.clamp(0.0, 0.1);
       _log('Updated silence threshold: $_silenceThreshold');
@@ -68,6 +68,10 @@ class LexiconFlutterService implements LexiconCoreService {
     if (noiseReduction != null) {
       _parakeetTranscriber?.setNoiseReduction(enabled: noiseReduction);
       _log('Updated noise reduction: $noiseReduction');
+    }
+    if (noiseReductionStrength != null) {
+      _parakeetTranscriber?.setNoiseReductionStrength(strength: noiseReductionStrength);
+      _log('Updated noise reduction strength: $noiseReductionStrength');
     }
   }
 

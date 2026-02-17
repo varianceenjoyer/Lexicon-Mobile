@@ -19,6 +19,8 @@ class AudioSettingsScreen extends ConsumerWidget {
       body: ListView(
         children: [
           _buildNoiseReductionTile(context, ref, settings),
+          if (settings.noiseReduction)
+            _buildNoiseReductionStrengthTile(context, ref, settings),
           _buildSilenceThresholdTile(context, ref, settings),
           _buildChunkSizeTile(context, ref, settings),
           const Divider(),
@@ -46,6 +48,38 @@ class AudioSettingsScreen extends ConsumerWidget {
       onChanged: (value) {
         ref.read(settingsProvider.notifier).setNoiseReduction(value);
       },
+    );
+  }
+
+  Widget _buildNoiseReductionStrengthTile(
+    BuildContext context,
+    WidgetRef ref,
+    SettingsState settings,
+  ) {
+    String strengthLabel(double value) {
+      if (value <= 0.25) return 'Light';
+      if (value <= 0.50) return 'Moderate';
+      if (value <= 0.75) return 'Strong';
+      return 'Maximum';
+    }
+
+    return ListTile(
+      leading: const SizedBox(width: 24), // Indent under toggle
+      title: const Text('Strength'),
+      subtitle: Text(strengthLabel(settings.noiseReductionStrength)),
+      trailing: SizedBox(
+        width: 200,
+        child: Slider(
+          value: settings.noiseReductionStrength,
+          min: 0.0,
+          max: 1.0,
+          divisions: 20,
+          label: strengthLabel(settings.noiseReductionStrength),
+          onChanged: (value) {
+            ref.read(settingsProvider.notifier).setNoiseReductionStrength(value);
+          },
+        ),
+      ),
     );
   }
 
@@ -135,7 +169,7 @@ class AudioSettingsScreen extends ConsumerWidget {
     return ListTile(
       leading: const Icon(Icons.restore),
       title: const Text('Reset Audio Settings'),
-      subtitle: const Text('Noise reduction: Off, Silence: Off, Chunk size: 3s'),
+      subtitle: const Text('Restore all audio settings to defaults'),
       onTap: () async {
         final confirmed = await showDialog<bool>(
           context: context,
@@ -144,6 +178,7 @@ class AudioSettingsScreen extends ConsumerWidget {
             content: const Text(
               'This will reset audio settings to recommended defaults:\n\n'
               '• Noise Reduction: Off\n'
+              '• Noise Reduction Strength: Maximum\n'
               '• Silence Filter: Off\n'
               '• Chunk Size: 3 seconds',
             ),
@@ -163,6 +198,7 @@ class AudioSettingsScreen extends ConsumerWidget {
         if (confirmed == true) {
           final notifier = ref.read(settingsProvider.notifier);
           await notifier.setNoiseReduction(false);
+          await notifier.setNoiseReductionStrength(1.0);
           await notifier.setSilenceThreshold(0.0);
           await notifier.setChunkSizeMs(3000);
           if (context.mounted) {
