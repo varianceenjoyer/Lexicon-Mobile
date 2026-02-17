@@ -38,10 +38,9 @@ android {
         }
     }
 
-    // Prevent compression of large ONNX model files bundled in assets
-    aaptOptions {
-        noCompress += listOf("onnx", "onnx_data")
-    }
+    // Model files (.ort) are copied from assets to filesystem before loading,
+    // so APK compression is safe and reduces download size significantly.
+    // No noCompress needed for model files.
 }
 
 flutter {

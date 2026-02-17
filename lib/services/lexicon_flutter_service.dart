@@ -252,26 +252,35 @@ class LexiconFlutterService implements LexiconCoreService {
     }
     await modelDirObj.create(recursive: true);
 
-    // Parakeet CTC model files - try quantized first, fall back to fp32
-    // The build script may produce either variant
+    // Parakeet CTC model files - try ORT format first, then ONNX variants
+    // Priority: .ort (fastest) > INT8 .onnx > fp32 .onnx
     final modelFiles = <String>[];
 
     // Check which model variant is bundled in assets
     try {
-      await rootBundle.load('$kParakeetModelAssetPath/model_int8_qdq.onnx');
-      // Quantized INT8 variant available
+      await rootBundle.load('$kParakeetModelAssetPath/model_int8_qdq.ort');
+      // ORT format (optimized, ~10x faster loading)
       modelFiles.addAll([
-        'model_int8_qdq.onnx',
-        'model_int8_qdq.onnx_data',
+        'model_int8_qdq.ort',
         'tokenizer.json',
       ]);
     } catch (_) {
-      // Fall back to fp32 variant
-      modelFiles.addAll([
-        'model.onnx',
-        'model.onnx_data',
-        'tokenizer.json',
-      ]);
+      try {
+        await rootBundle.load('$kParakeetModelAssetPath/model_int8_qdq.onnx');
+        // Quantized INT8 ONNX variant
+        modelFiles.addAll([
+          'model_int8_qdq.onnx',
+          'model_int8_qdq.onnx_data',
+          'tokenizer.json',
+        ]);
+      } catch (_) {
+        // Fall back to fp32 variant
+        modelFiles.addAll([
+          'model.onnx',
+          'model.onnx_data',
+          'tokenizer.json',
+        ]);
+      }
     }
 
     _log('Copying Parakeet model files from assets...');

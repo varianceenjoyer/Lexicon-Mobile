@@ -60,8 +60,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    # STT model (Parakeet CTC - FastConformer via ONNX Runtime, dynamic INT8)
-    - assets/models/parakeet/parakeet-ctc-0.6b/model_int8_qdq.onnx
-    - assets/models/parakeet/parakeet-ctc-0.6b/model_int8_qdq.onnx_data
+    # STT model (Parakeet CTC - FastConformer via ONNX Runtime, INT8 ORT format)
+    - assets/models/parakeet/parakeet-ctc-0.6b/model_int8_qdq.ort
     - assets/models/parakeet/parakeet-ctc-0.6b/tokenizer.json
     - assets/audio/
