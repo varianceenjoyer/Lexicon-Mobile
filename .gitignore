@@ -225,3 +225,13 @@ tmpclaude
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+# Local secrets / machine config
+.env
+.env.*
+.claude/settings.local.json
+*.jks
+*.keystore
+*.pem
+*.p12
+key.properties
+local.properties
