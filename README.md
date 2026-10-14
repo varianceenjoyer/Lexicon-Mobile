@@ -90,4 +90,4 @@ See `pubspec.yaml` for the full list.
 
 ## License
 
-MIT
+MIT License - See [LICENSE](LICENSE) for details.

@@ -228,7 +228,7 @@ class FilesScreen extends ConsumerWidget {
       context: context,
       applicationName: 'Lexicon',
       applicationVersion: '0.1.0',
-      applicationLegalese: '2026 Intemporalis',
+      applicationLegalese: '© 2026 varianceenjoyer',
       children: [
         const SizedBox(height: 16),
         const Text('Cross-platform speech transcription powered by local AI.'),
