@@ -32,7 +32,7 @@ assets/
 | Component | Status |
 |-----------|--------|
 | Android | Primary target, builds via `build_mobile_apk.sh` |
-| iOS | Project scaffolded, not yet built/tested |
+| iOS | Not started (Flutter code is cross-platform; Xcode project not yet generated) |
 | STT engine | Parakeet CTC 0.6B (INT8, ORT format) |
 | Note / Chat / Files / Settings | Implemented |
 
